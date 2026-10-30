@@ -1,0 +1,17 @@
+[package]
+name = "sgdf-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+sgdf-core = { path = "../sgdf-core" }
+clap.workspace = true
+comfy-table.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

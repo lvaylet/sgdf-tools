@@ -1,0 +1,17 @@
+[package]
+name = "sgdf-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
+encoding_rs.workspace = true
+phonenumber.workspace = true
+scraper.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
