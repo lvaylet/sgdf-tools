@@ -593,19 +593,19 @@ pub async fn get_google_contacts_export(
         entry.unit_labels.insert(format!("SGDF - {}", unite_nom));
     }
 
-    // 2. Adultes, cadres, chefs et compagnons
+    // 2. Adultes, cadres, chefs et compagnons (code fonction >= 200, Impeesa 181, ou Compagnon 140)
     let adult_rows = sqlx::query(
         "SELECT ind.id, ind.nom, ind.prenom,
                 ind.telephone_mobile, ind.telephone_domicile,
                 ind.courriel_personnel, ind.courriel_sgdf,
-                insc.fonction_libelle, u.nom as unite_nom
+                insc.fonction_libelle, insc.fonction_code, u.nom as unite_nom
          FROM inscriptions insc
          JOIN individus ind ON ind.id = insc.individu_id
          JOIN unites u ON u.id = insc.unite_id
          WHERE insc.saison_id = ? AND insc.active = 1
            AND (
-                insc.fonction_libelle IS NOT NULL
-                AND UPPER(insc.fonction_libelle) NOT IN ('FARFADET', 'LOUVETEAU', 'JEANNETTE', 'SCOUT', 'GUIDE', 'PIONNIER', 'CARAVELLE')
+                CAST(insc.fonction_code AS INTEGER) >= 200
+                OR insc.fonction_code IN ('140', '181')
            )",
     )
     .bind(saison_id)
@@ -627,7 +627,7 @@ pub async fn get_google_contacts_export(
             nom: nom.clone(),
             prenom: prenom.clone(),
             telephone_mobile: mob.clone(),
-            telephone_domicile: dom,
+            telephone_domicile: dom.clone(),
             courriel_personnel: email.clone(),
             courriel_sgdf: email_sgdf.clone(),
             filiations: Vec::new(),
@@ -637,6 +637,9 @@ pub async fn get_google_contacts_export(
 
         if entry.telephone_mobile.is_none() {
             entry.telephone_mobile = mob;
+        }
+        if entry.telephone_domicile.is_none() {
+            entry.telephone_domicile = dom;
         }
         if entry.courriel_personnel.is_none() {
             entry.courriel_personnel = email;

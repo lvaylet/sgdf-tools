@@ -79,4 +79,18 @@ async fn test_export_google_contacts_end_to_end() {
         .map(|l| l.as_str().unwrap())
         .collect();
     assert!(j_labels.iter().any(|l| l.contains("SCOUTS GUIDES")));
+
+    // 4. Vérifier qu'un Compagnon (ex: Marguerite Fauchery-Vedrenne) est bien inclus avec ses coordonnées directes
+    let marguerite = contacts
+        .iter()
+        .find(|c| c["prenom"].as_str().unwrap() == "MARGUERITE")
+        .expect("La compagnon Marguerite Fauchery doit être incluse");
+    assert_eq!(marguerite["telephone_mobile"].as_str().unwrap(), "+33766393598");
+    let c_labels: Vec<&str> = marguerite["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l.as_str().unwrap())
+        .collect();
+    assert!(c_labels.iter().any(|l| l.contains("COMPAGNONS")));
 }
