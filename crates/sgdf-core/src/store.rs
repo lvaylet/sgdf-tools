@@ -14,6 +14,31 @@ fn deduce_saison(start: Option<NaiveDate>, end: Option<NaiveDate>) -> (String, N
     }
 }
 
+pub struct IndividuInput<'a> {
+    pub code_adherent: Option<&'a str>,
+    pub civilite: Option<&'a str>,
+    pub nom: &'a str,
+    pub prenom: &'a str,
+    pub date_naissance: Option<NaiveDate>,
+    pub telephone_mobile: Option<&'a str>,
+    pub telephone_domicile: Option<&'a str>,
+    pub courriel_personnel: Option<&'a str>,
+    pub courriel_sgdf: Option<&'a str>,
+    pub adresse_ligne1: Option<&'a str>,
+    pub adresse_ligne2: Option<&'a str>,
+    pub adresse_code_postal: Option<&'a str>,
+    pub adresse_ville: Option<&'a str>,
+    pub autorisation_soins_urgence: bool,
+    pub droit_image_interne: bool,
+    pub droit_image_externe: bool,
+}
+
+struct CandidateIndividual {
+    id: i64,
+    telephone_mobile: Option<String>,
+    courriel_personnel: Option<String>,
+}
+
 pub async fn import_rows(pool: &SqlitePool, rows: &[ParsedRow]) -> Result<ImportSummary, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
@@ -41,7 +66,7 @@ pub async fn import_rows(pool: &SqlitePool, rows: &[ParsedRow]) -> Result<Import
     let mut liens_count = 0;
 
     for row in rows {
-        // 2. Unite
+        // 2. Unité
         let unite_id: i64 = sqlx::query(
             "INSERT INTO unites (code_structure, nom)
              VALUES (?, ?)
@@ -54,27 +79,27 @@ pub async fn import_rows(pool: &SqlitePool, rows: &[ParsedRow]) -> Result<Import
         .await?
         .get("id");
 
-        // 3. Individu principal (Adhérent jeune ou bénévole)
-        let individu_id = upsert_individu(
-            &mut tx,
-            row.code_adherent.as_deref(),
-            row.civilite.as_deref(),
-            &row.nom,
-            &row.prenom,
-            row.date_naissance,
-            row.telephone_mobile.as_deref(),
-            row.telephone_domicile.as_deref(),
-            row.courriel_personnel.as_deref(),
-            row.courriel_sgdf.as_deref(),
-            row.adresse_ligne1.as_deref(),
-            row.adresse_ligne2.as_deref(),
-            row.adresse_code_postal.as_deref(),
-            row.adresse_ville.as_deref(),
-            row.autorisation_soins,
-            row.droit_image_interne,
-            row.droit_image_externe,
-        )
-        .await?;
+        // 3. Individu principal (Adhérent jeune ou adulte bénévole)
+        let main_input = IndividuInput {
+            code_adherent: row.code_adherent.as_deref(),
+            civilite: row.civilite.as_deref(),
+            nom: &row.nom,
+            prenom: &row.prenom,
+            date_naissance: row.date_naissance,
+            telephone_mobile: row.telephone_mobile.as_deref(),
+            telephone_domicile: row.telephone_domicile.as_deref(),
+            courriel_personnel: row.courriel_personnel.as_deref(),
+            courriel_sgdf: row.courriel_sgdf.as_deref(),
+            adresse_ligne1: row.adresse_ligne1.as_deref(),
+            adresse_ligne2: row.adresse_ligne2.as_deref(),
+            adresse_code_postal: row.adresse_code_postal.as_deref(),
+            adresse_ville: row.adresse_ville.as_deref(),
+            autorisation_soins_urgence: row.autorisation_soins,
+            droit_image_interne: row.droit_image_interne,
+            droit_image_externe: row.droit_image_externe,
+        };
+
+        let individu_id = upsert_individu(&mut tx, &main_input).await?;
 
         // 4. Inscription
         let date_deb_str = row.date_debut_adhesion.map(|d| d.to_string());
@@ -106,27 +131,27 @@ pub async fn import_rows(pool: &SqlitePool, rows: &[ParsedRow]) -> Result<Import
         inscriptions_count += 1;
 
         // 5. Représentants légaux & liens de parenté
-        for (idx, parent) in row.parents.iter().enumerate() {
-            let parent_id = upsert_individu(
-                &mut tx,
-                parent.code_adherent.as_deref(),
-                parent.civilite.as_deref(),
-                &parent.nom,
-                &parent.prenom,
-                None,
-                parent.telephone_mobile.as_deref(),
-                parent.telephone_domicile.as_deref(),
-                parent.courriel_personnel.as_deref(),
-                parent.courriel_sgdf.as_deref(),
-                parent.adresse_ligne1.as_deref(),
-                None,
-                parent.adresse_code_postal.as_deref(),
-                parent.adresse_ville.as_deref(),
-                false,
-                false,
-                false,
-            )
-            .await?;
+        for (idx, parent) in row.representants_legaux.iter().enumerate() {
+            let parent_input = IndividuInput {
+                code_adherent: parent.code_adherent.as_deref(),
+                civilite: parent.civilite.as_deref(),
+                nom: &parent.nom,
+                prenom: &parent.prenom,
+                date_naissance: None,
+                telephone_mobile: parent.telephone_mobile.as_deref(),
+                telephone_domicile: parent.telephone_domicile.as_deref(),
+                courriel_personnel: parent.courriel_personnel.as_deref(),
+                courriel_sgdf: parent.courriel_sgdf.as_deref(),
+                adresse_ligne1: parent.adresse_ligne1.as_deref(),
+                adresse_ligne2: None,
+                adresse_code_postal: parent.adresse_code_postal.as_deref(),
+                adresse_ville: parent.adresse_ville.as_deref(),
+                autorisation_soins_urgence: false,
+                droit_image_interne: false,
+                droit_image_externe: false,
+            };
+
+            let parent_id = upsert_individu(&mut tx, &parent_input).await?;
 
             sqlx::query(
                 "INSERT INTO liens_parente (parent_id, jeune_id, saison_id, ordre)
@@ -144,7 +169,6 @@ pub async fn import_rows(pool: &SqlitePool, rows: &[ParsedRow]) -> Result<Import
         }
     }
 
-    // Calcul des totaux finaux
     let total_individus: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM individus")
         .fetch_one(&mut *tx)
         .await?;
@@ -153,46 +177,26 @@ pub async fn import_rows(pool: &SqlitePool, rows: &[ParsedRow]) -> Result<Import
         .fetch_one(&mut *tx)
         .await?;
 
-    let unites_count = total_unites;
-
     tx.commit().await?;
 
     Ok(ImportSummary {
-        individus_imported: total_individus,
-        unites_imported: unites_count,
-        inscriptions_imported: inscriptions_count,
-        liens_parente_imported: liens_count,
+        individus_importes: total_individus,
+        unites_importees: total_unites,
+        inscriptions_importees: inscriptions_count,
+        liens_parente_importes: liens_count,
     })
 }
 
-type CandidateRecord = (i64, Option<String>, Option<String>, Option<String>);
-
-#[allow(clippy::too_many_arguments)]
 async fn upsert_individu(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    code_adherent: Option<&str>,
-    civilite: Option<&str>,
-    nom: &str,
-    prenom: &str,
-    date_naissance: Option<NaiveDate>,
-    mobile: Option<&str>,
-    domicile: Option<&str>,
-    courriel_perso: Option<&str>,
-    courriel_sgdf: Option<&str>,
-    adr1: Option<&str>,
-    adr2: Option<&str>,
-    cp: Option<&str>,
-    ville: Option<&str>,
-    soins: bool,
-    image_int: bool,
-    image_ext: bool,
+    input: &IndividuInput<'_>,
 ) -> Result<i64, sqlx::Error> {
-    let nom_clean = nom.trim().to_uppercase();
-    let prenom_clean = prenom.trim().to_uppercase();
-    let dn_str = date_naissance.map(|d| d.to_string());
+    let nom_clean = input.nom.trim().to_uppercase();
+    let prenom_clean = input.prenom.trim().to_uppercase();
+    let date_naissance_str = input.date_naissance.map(|d| d.to_string());
 
     // 1. Recherche par code adhérent si renseigné
-    if let Some(code) = code_adherent.filter(|c| !c.trim().is_empty()) {
+    if let Some(code) = input.code_adherent.filter(|c| !c.trim().is_empty()) {
         let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM individus WHERE code_adherent = ?")
             .bind(code)
             .fetch_optional(&mut **tx)
@@ -219,21 +223,21 @@ async fn upsert_individu(
                     updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?",
             )
-            .bind(civilite)
+            .bind(input.civilite)
             .bind(&nom_clean)
             .bind(&prenom_clean)
-            .bind(dn_str.as_deref())
-            .bind(mobile)
-            .bind(domicile)
-            .bind(courriel_perso)
-            .bind(courriel_sgdf)
-            .bind(adr1)
-            .bind(adr2)
-            .bind(cp)
-            .bind(ville)
-            .bind(soins as i32)
-            .bind(image_int as i32)
-            .bind(image_ext as i32)
+            .bind(date_naissance_str.as_deref())
+            .bind(input.telephone_mobile)
+            .bind(input.telephone_domicile)
+            .bind(input.courriel_personnel)
+            .bind(input.courriel_sgdf)
+            .bind(input.adresse_ligne1)
+            .bind(input.adresse_ligne2)
+            .bind(input.adresse_code_postal)
+            .bind(input.adresse_ville)
+            .bind(input.autorisation_soins_urgence as i32)
+            .bind(input.droit_image_interne as i32)
+            .bind(input.droit_image_externe as i32)
             .bind(id)
             .execute(&mut **tx)
             .await?;
@@ -242,9 +246,9 @@ async fn upsert_individu(
         }
     }
 
-    // 2. Recherche par Nom + Prénom (déduplication pour les parents sans code adhérent ou avant rattachement)
-    let candidates: Vec<CandidateRecord> = sqlx::query_as(
-        "SELECT id, code_adherent, telephone_mobile, courriel_personnel
+    // 2. Recherche par Nom + Prénom (déduplication pour les représentants légaux ou ré-identification)
+    let rows = sqlx::query(
+        "SELECT id, telephone_mobile, courriel_personnel
          FROM individus
          WHERE UPPER(nom) = ? AND UPPER(prenom) = ?",
     )
@@ -253,44 +257,72 @@ async fn upsert_individu(
     .fetch_all(&mut **tx)
     .await?;
 
+    let candidates: Vec<CandidateIndividual> = rows
+        .into_iter()
+        .map(|r| CandidateIndividual {
+            id: r.get("id"),
+            telephone_mobile: r.get("telephone_mobile"),
+            courriel_personnel: r.get("courriel_personnel"),
+        })
+        .collect();
+
     if !candidates.is_empty() {
-        // Si un seul candidat ou correspondance sur mobile/email, on fusionne
-        let matched_id = candidates.iter().find(|(_, _, cand_mob, cand_email)| {
-            (mobile.is_some() && mobile == cand_mob.as_deref())
-                || (courriel_perso.is_some() && courriel_perso == cand_email.as_deref())
-        }).map(|(id, ..)| *id).unwrap_or(candidates[0].0);
+        // Déduplication basée sur la clé composite (nom + prénom + concordance contact)
+        let matched = candidates.iter().find(|cand| {
+            let phone_matches = input.telephone_mobile.is_some()
+                && input.telephone_mobile == cand.telephone_mobile.as_deref();
+            let email_matches = input.courriel_personnel.is_some()
+                && input.courriel_personnel == cand.courriel_personnel.as_deref();
+            let candidate_has_no_contact =
+                cand.telephone_mobile.is_none() && cand.courriel_personnel.is_none();
 
-        sqlx::query(
-            "UPDATE individus SET
-                code_adherent = COALESCE(?, code_adherent),
-                civilite = COALESCE(?, civilite),
-                telephone_mobile = COALESCE(?, telephone_mobile),
-                telephone_domicile = COALESCE(?, telephone_domicile),
-                courriel_personnel = COALESCE(?, courriel_personnel),
-                courriel_sgdf = COALESCE(?, courriel_sgdf),
-                adresse_ligne1 = COALESCE(?, adresse_ligne1),
-                adresse_code_postal = COALESCE(?, adresse_code_postal),
-                adresse_ville = COALESCE(?, adresse_ville),
-                updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?",
-        )
-        .bind(code_adherent)
-        .bind(civilite)
-        .bind(mobile)
-        .bind(domicile)
-        .bind(courriel_perso)
-        .bind(courriel_sgdf)
-        .bind(adr1)
-        .bind(cp)
-        .bind(ville)
-        .bind(matched_id)
-        .execute(&mut **tx)
-        .await?;
+            phone_matches || email_matches || (candidate_has_no_contact && candidates.len() == 1)
+        });
 
-        return Ok(matched_id);
+        if let Some(cand) = matched {
+            let matched_id = cand.id;
+            sqlx::query(
+                "UPDATE individus SET
+                    code_adherent = COALESCE(?, code_adherent),
+                    civilite = COALESCE(?, civilite),
+                    date_naissance = COALESCE(?, date_naissance),
+                    telephone_mobile = COALESCE(?, telephone_mobile),
+                    telephone_domicile = COALESCE(?, telephone_domicile),
+                    courriel_personnel = COALESCE(?, courriel_personnel),
+                    courriel_sgdf = COALESCE(?, courriel_sgdf),
+                    adresse_ligne1 = COALESCE(?, adresse_ligne1),
+                    adresse_ligne2 = COALESCE(?, adresse_ligne2),
+                    adresse_code_postal = COALESCE(?, adresse_code_postal),
+                    adresse_ville = COALESCE(?, adresse_ville),
+                    autorisation_soins_urgence = MAX(?, autorisation_soins_urgence),
+                    droit_image_interne = MAX(?, droit_image_interne),
+                    droit_image_externe = MAX(?, droit_image_externe),
+                    updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?",
+            )
+            .bind(input.code_adherent)
+            .bind(input.civilite)
+            .bind(date_naissance_str.as_deref())
+            .bind(input.telephone_mobile)
+            .bind(input.telephone_domicile)
+            .bind(input.courriel_personnel)
+            .bind(input.courriel_sgdf)
+            .bind(input.adresse_ligne1)
+            .bind(input.adresse_ligne2)
+            .bind(input.adresse_code_postal)
+            .bind(input.adresse_ville)
+            .bind(input.autorisation_soins_urgence as i32)
+            .bind(input.droit_image_interne as i32)
+            .bind(input.droit_image_externe as i32)
+            .bind(matched_id)
+            .execute(&mut **tx)
+            .await?;
+
+            return Ok(matched_id);
+        }
     }
 
-    // 3. Nouveau profil
+    // 3. Nouvel individu
     let new_id: i64 = sqlx::query(
         "INSERT INTO individus (
             code_adherent, civilite, nom, prenom, date_naissance,
@@ -300,22 +332,22 @@ async fn upsert_individu(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id",
     )
-    .bind(code_adherent)
-    .bind(civilite)
+    .bind(input.code_adherent)
+    .bind(input.civilite)
     .bind(&nom_clean)
     .bind(&prenom_clean)
-    .bind(dn_str.as_deref())
-    .bind(mobile)
-    .bind(domicile)
-    .bind(courriel_perso)
-    .bind(courriel_sgdf)
-    .bind(adr1)
-    .bind(adr2)
-    .bind(cp)
-    .bind(ville)
-    .bind(soins as i32)
-    .bind(image_int as i32)
-    .bind(image_ext as i32)
+    .bind(date_naissance_str.as_deref())
+    .bind(input.telephone_mobile)
+    .bind(input.telephone_domicile)
+    .bind(input.courriel_personnel)
+    .bind(input.courriel_sgdf)
+    .bind(input.adresse_ligne1)
+    .bind(input.adresse_ligne2)
+    .bind(input.adresse_code_postal)
+    .bind(input.adresse_ville)
+    .bind(input.autorisation_soins_urgence as i32)
+    .bind(input.droit_image_interne as i32)
+    .bind(input.droit_image_externe as i32)
     .fetch_one(&mut **tx)
     .await?
     .get("id");

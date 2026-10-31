@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportSummary {
-    pub individus_imported: i64,
-    pub unites_imported: i64,
-    pub inscriptions_imported: i64,
-    pub liens_parente_imported: i64,
+    pub individus_importes: i64,
+    pub unites_importees: i64,
+    pub inscriptions_importees: i64,
+    pub liens_parente_importes: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ pub struct Saison {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ParsedParent {
+pub struct ParsedRepresentantLegal {
     pub civilite: Option<String>,
     pub code_adherent: Option<String>,
     pub nom: String,
@@ -87,5 +87,5 @@ pub struct ParsedRow {
     pub date_debut_adhesion: Option<NaiveDate>,
     pub date_fin_adhesion: Option<NaiveDate>,
     pub statut_adhesion: Option<String>,
-    pub parents: Vec<ParsedParent>,
+    pub representants_legaux: Vec<ParsedRepresentantLegal>,
 }

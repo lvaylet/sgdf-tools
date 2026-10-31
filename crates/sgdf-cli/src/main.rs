@@ -98,10 +98,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut table = Table::new();
                 table.load_preset(UTF8_FULL);
                 table.set_header(vec!["Métrique", "Quantité"]);
-                table.add_row(vec!["Individus (adhérents & parents)", &summary.individus_imported.to_string()]);
-                table.add_row(vec!["Unités pédagogiques", &summary.unites_imported.to_string()]);
-                table.add_row(vec!["Inscriptions saison", &summary.inscriptions_imported.to_string()]);
-                table.add_row(vec!["Liens de parenté enregistrés", &summary.liens_parente_imported.to_string()]);
+                table.add_row(vec!["Individus (adhérents & représentants légaux)", &summary.individus_importes.to_string()]);
+                table.add_row(vec!["Unités pédagogiques", &summary.unites_importees.to_string()]);
+                table.add_row(vec!["Inscriptions saison", &summary.inscriptions_importees.to_string()]);
+                table.add_row(vec!["Liens de parenté enregistrés", &summary.liens_parente_importes.to_string()]);
                 println!("{}", table);
             }
         }

@@ -34,10 +34,10 @@ async fn test_import_gestact_xls_end_to_end() {
     let res_body = res.into_body().collect().await.unwrap().to_bytes();
     let summary: serde_json::Value = serde_json::from_slice(&res_body).unwrap();
 
-    let total_individus = summary["individus_imported"].as_i64().unwrap();
-    let total_unites = summary["unites_imported"].as_i64().unwrap();
-    let total_inscriptions = summary["inscriptions_imported"].as_i64().unwrap();
-    let total_liens = summary["liens_parente_imported"].as_i64().unwrap();
+    let total_individus = summary["individus_importes"].as_i64().unwrap();
+    let total_unites = summary["unites_importees"].as_i64().unwrap();
+    let total_inscriptions = summary["inscriptions_importees"].as_i64().unwrap();
+    let total_liens = summary["liens_parente_importes"].as_i64().unwrap();
 
     assert_eq!(total_unites, 7, "Il doit y avoir exactement 7 unités");
     assert_eq!(total_inscriptions, 112, "L'export contient 112 lignes d'inscriptions");
