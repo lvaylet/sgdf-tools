@@ -25,9 +25,18 @@ mod tests {
 
     #[test]
     fn test_normalize_french_mobile() {
-        assert_eq!(normalize_phone("0609266743"), Some("+33609266743".to_string()));
-        assert_eq!(normalize_phone("06 09 26 67 43"), Some("+33609266743".to_string()));
-        assert_eq!(normalize_phone("+33 6 09 26 67 43"), Some("+33609266743".to_string()));
+        assert_eq!(
+            normalize_phone("0609266743"),
+            Some("+33609266743".to_string())
+        );
+        assert_eq!(
+            normalize_phone("06 09 26 67 43"),
+            Some("+33609266743".to_string())
+        );
+        assert_eq!(
+            normalize_phone("+33 6 09 26 67 43"),
+            Some("+33609266743".to_string())
+        );
     }
 
     #[test]

@@ -68,7 +68,10 @@ async fn test_update_unit_whatsapp_jid() {
 
     let patch_body = patch_res.into_body().collect().await.unwrap().to_bytes();
     let updated: serde_json::Value = serde_json::from_slice(&patch_body).unwrap();
-    assert_eq!(updated["whatsapp_group_jid"].as_str().unwrap(), "120363000111222@g.us");
+    assert_eq!(
+        updated["whatsapp_group_jid"].as_str().unwrap(),
+        "120363000111222@g.us"
+    );
 
     // 2. Mettre à jour avec un JSON vide `{}` sans échouer
     let empty_patch = Request::builder()

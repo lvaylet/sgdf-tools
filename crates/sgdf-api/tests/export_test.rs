@@ -31,18 +31,34 @@ async fn test_export_google_contacts_end_to_end() {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let contacts: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
-    assert!(contacts.len() > 50, "Le répertoire consolidé doit contenir des dizaines de contacts");
+    assert!(
+        contacts.len() > 50,
+        "Le répertoire consolidé doit contenir des dizaines de contacts"
+    );
 
     // 1. Laurent Vaylet : RG + Parent de Lisa et Lucie
     let laurent = contacts
         .iter()
-        .find(|c| c["nom"].as_str().unwrap() == "VAYLET" && c["prenom"].as_str().unwrap() == "LAURENT")
+        .find(|c| {
+            c["nom"].as_str().unwrap() == "VAYLET" && c["prenom"].as_str().unwrap() == "LAURENT"
+        })
         .expect("Laurent Vaylet doit être présent dans l'export");
 
-    assert_eq!(laurent["telephone_mobile"].as_str().unwrap(), "+33687966975");
+    assert_eq!(
+        laurent["telephone_mobile"].as_str().unwrap(),
+        "+33687966975"
+    );
     let notes = laurent["notes"].as_str().unwrap();
-    assert!(notes.contains("LISA"), "Notes doit mentionner LISA : {}", notes);
-    assert!(notes.contains("LUCIE"), "Notes doit mentionner LUCIE : {}", notes);
+    assert!(
+        notes.contains("LISA"),
+        "Notes doit mentionner LISA : {}",
+        notes
+    );
+    assert!(
+        notes.contains("LUCIE"),
+        "Notes doit mentionner LUCIE : {}",
+        notes
+    );
 
     let labels: Vec<&str> = laurent["labels"]
         .as_array()
@@ -59,9 +75,16 @@ async fn test_export_google_contacts_end_to_end() {
     // 2. Vérifier qu'un parent de plusieurs enfants (ex: Prou Marie ou Alexandre Kauffmann) n'apparaît qu'une seule fois
     let kauffmann_parents: Vec<_> = contacts
         .iter()
-        .filter(|c| c["nom"].as_str().unwrap() == "KAUFFMANN" && c["prenom"].as_str().unwrap() == "ALEXANDRE")
+        .filter(|c| {
+            c["nom"].as_str().unwrap() == "KAUFFMANN"
+                && c["prenom"].as_str().unwrap() == "ALEXANDRE"
+        })
         .collect();
-    assert_eq!(kauffmann_parents.len(), 1, "Alexandre Kauffmann ne doit avoir qu'une seule fiche contact");
+    assert_eq!(
+        kauffmann_parents.len(),
+        1,
+        "Alexandre Kauffmann ne doit avoir qu'une seule fiche contact"
+    );
     let k_notes = kauffmann_parents[0]["notes"].as_str().unwrap();
     assert!(k_notes.contains("BASILE"));
     assert!(k_notes.contains("CELESTE"));
@@ -69,7 +92,9 @@ async fn test_export_google_contacts_end_to_end() {
     // 3. Vérifier qu'une cheftaine sans enfant (ex: Jaina Elleouet) est bien incluse avec ses coordonnées directes
     let jaina = contacts
         .iter()
-        .find(|c| c["nom"].as_str().unwrap() == "ELLÉOUËT" || c["nom"].as_str().unwrap() == "ELLEOUET")
+        .find(|c| {
+            c["nom"].as_str().unwrap() == "ELLÉOUËT" || c["nom"].as_str().unwrap() == "ELLEOUET"
+        })
         .expect("La cheftaine Jaina Elleouet doit être incluse");
     assert_eq!(jaina["telephone_mobile"].as_str().unwrap(), "+33661135865");
     let j_labels: Vec<&str> = jaina["labels"]
@@ -85,7 +110,10 @@ async fn test_export_google_contacts_end_to_end() {
         .iter()
         .find(|c| c["prenom"].as_str().unwrap() == "MARGUERITE")
         .expect("La compagnon Marguerite Fauchery doit être incluse");
-    assert_eq!(marguerite["telephone_mobile"].as_str().unwrap(), "+33766393598");
+    assert_eq!(
+        marguerite["telephone_mobile"].as_str().unwrap(),
+        "+33766393598"
+    );
     let c_labels: Vec<&str> = marguerite["labels"]
         .as_array()
         .unwrap()

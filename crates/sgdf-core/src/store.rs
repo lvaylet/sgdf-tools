@@ -6,9 +6,16 @@ use chrono::{Datelike, NaiveDate};
 use sqlx::{Row, SqlitePool};
 use std::collections::{BTreeSet, HashMap};
 
-fn deduce_saison(start: Option<NaiveDate>, end: Option<NaiveDate>) -> (String, NaiveDate, NaiveDate) {
+fn deduce_saison(
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+) -> (String, NaiveDate, NaiveDate) {
     if let (Some(s), Some(e)) = (start, end) {
-        let year_start = if s.month() >= 9 { s.year() } else { s.year() - 1 };
+        let year_start = if s.month() >= 9 {
+            s.year()
+        } else {
+            s.year() - 1
+        };
         let libelle = format!("{}-{}", year_start, year_start + 1);
         (libelle, s, e)
     } else {
@@ -43,7 +50,10 @@ struct CandidateIndividual {
     courriel_personnel: Option<String>,
 }
 
-pub async fn import_rows(pool: &SqlitePool, rows: &[ParsedRow]) -> Result<ImportSummary, sqlx::Error> {
+pub async fn import_rows(
+    pool: &SqlitePool,
+    rows: &[ParsedRow],
+) -> Result<ImportSummary, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
     // 1. Saison
@@ -201,10 +211,11 @@ async fn upsert_individu(
 
     // 1. Recherche par code adhérent si renseigné
     if let Some(code) = input.code_adherent.filter(|c| !c.trim().is_empty()) {
-        let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM individus WHERE code_adherent = ?")
-            .bind(code)
-            .fetch_optional(&mut **tx)
-            .await?;
+        let existing: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM individus WHERE code_adherent = ?")
+                .bind(code)
+                .fetch_optional(&mut **tx)
+                .await?;
 
         if let Some((id,)) = existing {
             sqlx::query(
@@ -531,11 +542,10 @@ struct ContactBuilder {
 pub async fn get_google_contacts_export(
     pool: &SqlitePool,
 ) -> Result<Vec<GoogleContactEntry>, sqlx::Error> {
-    let saison_row = sqlx::query(
-        "SELECT id FROM saisons WHERE active = 1 ORDER BY date_debut DESC LIMIT 1",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let saison_row =
+        sqlx::query("SELECT id FROM saisons WHERE active = 1 ORDER BY date_debut DESC LIMIT 1")
+            .fetch_optional(pool)
+            .await?;
 
     let saison_id: i64 = match saison_row {
         Some(r) => r.get("id"),

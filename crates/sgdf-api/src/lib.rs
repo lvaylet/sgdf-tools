@@ -26,7 +26,10 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
         .route("/api/v1/units", get(list_units))
         .route("/api/v1/units/{id}", patch(update_unit))
         .route("/api/v1/units/{id}/members", get(get_unit_members))
-        .route("/api/v1/exports/google-contacts", get(export_google_contacts))
+        .route(
+            "/api/v1/exports/google-contacts",
+            get(export_google_contacts),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -80,12 +83,14 @@ async fn import_gestact_file(
 async fn list_units(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let units = sgdf_core::store::get_units(&state.pool).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
-        )
-    })?;
+    let units = sgdf_core::store::get_units(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+            )
+        })?;
 
     Ok((StatusCode::OK, Json(units)))
 }
@@ -95,18 +100,15 @@ async fn update_unit(
     Path(id): Path<i64>,
     Json(payload): Json<UpdateUnitPayload>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let updated = sgdf_core::store::update_unit_jid(
-        &state.pool,
-        id,
-        payload.whatsapp_group_jid.as_deref(),
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
-        )
-    })?;
+    let updated =
+        sgdf_core::store::update_unit_jid(&state.pool, id, payload.whatsapp_group_jid.as_deref())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+                )
+            })?;
 
     match updated {
         Some(unit) => Ok((StatusCode::OK, Json(unit))),

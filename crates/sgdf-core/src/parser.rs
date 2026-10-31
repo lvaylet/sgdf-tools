@@ -59,7 +59,11 @@ fn extract_phone(
 ) -> Option<String> {
     let raw = get_cell(header_map, cells, col_pref)
         .and_then(parse_opt_text)
-        .or_else(|| col_alt.and_then(|c| get_cell(header_map, cells, c)).and_then(parse_opt_text));
+        .or_else(|| {
+            col_alt
+                .and_then(|c| get_cell(header_map, cells, c))
+                .and_then(parse_opt_text)
+        });
     raw.as_deref().and_then(normalize_phone).or(raw)
 }
 
@@ -91,15 +95,17 @@ pub fn parse_gestact_export(bytes: &[u8]) -> Result<Vec<ParsedRow>, ParserError>
             continue;
         }
 
-        let nom = match get_cell(&header_map, &cell_values, "Individu.Nom").and_then(parse_opt_text) {
+        let nom = match get_cell(&header_map, &cell_values, "Individu.Nom").and_then(parse_opt_text)
+        {
             Some(n) => n,
             None => continue,
         };
 
-        let prenom = match get_cell(&header_map, &cell_values, "Individu.Prenom").and_then(parse_opt_text) {
-            Some(p) => p,
-            None => continue,
-        };
+        let prenom =
+            match get_cell(&header_map, &cell_values, "Individu.Prenom").and_then(parse_opt_text) {
+                Some(p) => p,
+                None => continue,
+            };
 
         let structure_code = get_cell(&header_map, &cell_values, "Structure.CodeStructure")
             .and_then(parse_opt_text)
@@ -109,14 +115,20 @@ pub fn parse_gestact_export(bytes: &[u8]) -> Result<Vec<ParsedRow>, ParserError>
             .and_then(parse_opt_text)
             .unwrap_or_default();
 
-        let civilite = get_cell(&header_map, &cell_values, "IndividuCivilite.NomCourt").and_then(parse_opt_text);
-        let code_adherent = get_cell(&header_map, &cell_values, "Individu.CodeAdherent").and_then(parse_opt_text);
-        let fonction_code = get_cell(&header_map, &cell_values, "Fonction.Code").and_then(parse_opt_text);
+        let civilite = get_cell(&header_map, &cell_values, "IndividuCivilite.NomCourt")
+            .and_then(parse_opt_text);
+        let code_adherent =
+            get_cell(&header_map, &cell_values, "Individu.CodeAdherent").and_then(parse_opt_text);
+        let fonction_code =
+            get_cell(&header_map, &cell_values, "Fonction.Code").and_then(parse_opt_text);
         let fonction_nom = get_cell(&header_map, &cell_values, "Fonction.NomMasculin")
             .and_then(parse_opt_text)
-            .or_else(|| get_cell(&header_map, &cell_values, "Fonction.NomFeminin").and_then(parse_opt_text));
+            .or_else(|| {
+                get_cell(&header_map, &cell_values, "Fonction.NomFeminin").and_then(parse_opt_text)
+            });
 
-        let date_naissance = get_cell(&header_map, &cell_values, "Individu.DateNaissance").and_then(parse_date);
+        let date_naissance =
+            get_cell(&header_map, &cell_values, "Individu.DateNaissance").and_then(parse_date);
 
         let telephone_mobile = extract_phone(
             &header_map,
@@ -131,27 +143,43 @@ pub fn parse_gestact_export(bytes: &[u8]) -> Result<Vec<ParsedRow>, ParserError>
             None,
         );
 
-        let courriel_personnel = get_cell(&header_map, &cell_values, "Individu.CourrielPersonnel").and_then(parse_opt_text);
-        let courriel_sgdf = get_cell(&header_map, &cell_values, "Individu.CourrielDédiéSGDF").and_then(parse_opt_text);
+        let courriel_personnel = get_cell(&header_map, &cell_values, "Individu.CourrielPersonnel")
+            .and_then(parse_opt_text);
+        let courriel_sgdf = get_cell(&header_map, &cell_values, "Individu.CourrielDédiéSGDF")
+            .and_then(parse_opt_text);
 
-        let adresse_ligne1 = get_cell(&header_map, &cell_values, "Individu.Adresse.Ligne1").and_then(parse_opt_text);
-        let adresse_ligne2 = get_cell(&header_map, &cell_values, "Individu.Adresse.Ligne2").and_then(parse_opt_text);
-        let adresse_code_postal = get_cell(&header_map, &cell_values, "Individu.Adresse.CodePostal").and_then(parse_opt_text);
-        let adresse_ville = get_cell(&header_map, &cell_values, "Individu.Adresse.Municipalite").and_then(parse_opt_text);
+        let adresse_ligne1 =
+            get_cell(&header_map, &cell_values, "Individu.Adresse.Ligne1").and_then(parse_opt_text);
+        let adresse_ligne2 =
+            get_cell(&header_map, &cell_values, "Individu.Adresse.Ligne2").and_then(parse_opt_text);
+        let adresse_code_postal =
+            get_cell(&header_map, &cell_values, "Individu.Adresse.CodePostal")
+                .and_then(parse_opt_text);
+        let adresse_ville = get_cell(&header_map, &cell_values, "Individu.Adresse.Municipalite")
+            .and_then(parse_opt_text);
 
-        let autorisation_soins = get_cell(&header_map, &cell_values, "Individu.AutorisationInterventionChirurgicale")
-            .map(parse_bool)
-            .unwrap_or(false);
-        let droit_image_interne = get_cell(&header_map, &cell_values, "Utilisation d'image interne")
-            .map(parse_bool)
-            .unwrap_or(false);
-        let droit_image_externe = get_cell(&header_map, &cell_values, "Utilisation d'image externe")
-            .map(parse_bool)
-            .unwrap_or(false);
+        let autorisation_soins = get_cell(
+            &header_map,
+            &cell_values,
+            "Individu.AutorisationInterventionChirurgicale",
+        )
+        .map(parse_bool)
+        .unwrap_or(false);
+        let droit_image_interne =
+            get_cell(&header_map, &cell_values, "Utilisation d'image interne")
+                .map(parse_bool)
+                .unwrap_or(false);
+        let droit_image_externe =
+            get_cell(&header_map, &cell_values, "Utilisation d'image externe")
+                .map(parse_bool)
+                .unwrap_or(false);
 
-        let date_debut_adhesion = get_cell(&header_map, &cell_values, "Adhesions.DateDebut").and_then(parse_date);
-        let date_fin_adhesion = get_cell(&header_map, &cell_values, "Adhesions.DateFin").and_then(parse_date);
-        let statut_adhesion = get_cell(&header_map, &cell_values, "Adhesions.Statut").and_then(parse_opt_text);
+        let date_debut_adhesion =
+            get_cell(&header_map, &cell_values, "Adhesions.DateDebut").and_then(parse_date);
+        let date_fin_adhesion =
+            get_cell(&header_map, &cell_values, "Adhesions.DateFin").and_then(parse_date);
+        let statut_adhesion =
+            get_cell(&header_map, &cell_values, "Adhesions.Statut").and_then(parse_opt_text);
 
         // Représentants légaux 1, 2, 3
         let mut representants_legaux = Vec::new();
@@ -164,8 +192,18 @@ pub fn parse_gestact_export(bytes: &[u8]) -> Result<Vec<ParsedRow>, ParserError>
                 get_cell(&header_map, &cell_values, &p_nom_key).and_then(parse_opt_text),
                 get_cell(&header_map, &cell_values, &p_prenom_key).and_then(parse_opt_text),
             ) {
-                let p_civ = get_cell(&header_map, &cell_values, &format!("{}Civilite.NomCourt", prefix)).and_then(parse_opt_text);
-                let p_code = get_cell(&header_map, &cell_values, &format!("{}.CodeAdherent", prefix)).and_then(parse_opt_text);
+                let p_civ = get_cell(
+                    &header_map,
+                    &cell_values,
+                    &format!("{}Civilite.NomCourt", prefix),
+                )
+                .and_then(parse_opt_text);
+                let p_code = get_cell(
+                    &header_map,
+                    &cell_values,
+                    &format!("{}.CodeAdherent", prefix),
+                )
+                .and_then(parse_opt_text);
 
                 let p_mobile = extract_phone(
                     &header_map,
@@ -180,12 +218,37 @@ pub fn parse_gestact_export(bytes: &[u8]) -> Result<Vec<ParsedRow>, ParserError>
                     None,
                 );
 
-                let p_email = get_cell(&header_map, &cell_values, &format!("{}.CourrielPersonnel", prefix)).and_then(parse_opt_text);
-                let p_email_sgdf = get_cell(&header_map, &cell_values, &format!("{}.CourrielDédiéSGDF", prefix)).and_then(parse_opt_text);
+                let p_email = get_cell(
+                    &header_map,
+                    &cell_values,
+                    &format!("{}.CourrielPersonnel", prefix),
+                )
+                .and_then(parse_opt_text);
+                let p_email_sgdf = get_cell(
+                    &header_map,
+                    &cell_values,
+                    &format!("{}.CourrielDédiéSGDF", prefix),
+                )
+                .and_then(parse_opt_text);
 
-                let p_addr1 = get_cell(&header_map, &cell_values, &format!("{}.Adresse.Ligne1", prefix)).and_then(parse_opt_text);
-                let p_cp = get_cell(&header_map, &cell_values, &format!("{}.Adresse.CodePostal", prefix)).and_then(parse_opt_text);
-                let p_ville = get_cell(&header_map, &cell_values, &format!("{}.Adresse.Municipalite", prefix)).and_then(parse_opt_text);
+                let p_addr1 = get_cell(
+                    &header_map,
+                    &cell_values,
+                    &format!("{}.Adresse.Ligne1", prefix),
+                )
+                .and_then(parse_opt_text);
+                let p_cp = get_cell(
+                    &header_map,
+                    &cell_values,
+                    &format!("{}.Adresse.CodePostal", prefix),
+                )
+                .and_then(parse_opt_text);
+                let p_ville = get_cell(
+                    &header_map,
+                    &cell_values,
+                    &format!("{}.Adresse.Municipalite", prefix),
+                )
+                .and_then(parse_opt_text);
 
                 representants_legaux.push(ParsedRepresentantLegal {
                     civilite: p_civ,
@@ -244,7 +307,9 @@ mod tests {
         let rows = parse_gestact_export(bytes).expect("Le fichier doit être parsable");
         assert_eq!(rows.len(), 112);
 
-        let laurent = rows.iter().find(|r| r.nom == "VAYLET" && r.prenom == "LAURENT");
+        let laurent = rows
+            .iter()
+            .find(|r| r.nom == "VAYLET" && r.prenom == "LAURENT");
         assert!(laurent.is_some());
         let l = laurent.unwrap();
         assert_eq!(l.code_adherent.as_deref(), Some("164620934"));

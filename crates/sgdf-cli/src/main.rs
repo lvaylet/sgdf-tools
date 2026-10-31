@@ -93,9 +93,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if res.status().is_success() {
                 if cli.json {
-                    println!("{}", serde_json::json!({ "status": "ok", "url": cli.api_url }));
+                    println!(
+                        "{}",
+                        serde_json::json!({ "status": "ok", "url": cli.api_url })
+                    );
                 } else {
-                    println!("API disponible sur {} (statut : {})", cli.api_url, res.status());
+                    println!(
+                        "API disponible sur {} (statut : {})",
+                        cli.api_url,
+                        res.status()
+                    );
                 }
             } else {
                 eprintln!("Erreur lors de l'appel API : {}", res.status());
@@ -122,7 +129,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .mime_str("application/vnd.ms-excel")?,
             );
 
-            let req = send_req(client.post(format!("{}/api/v1/imports", cli.api_url)).multipart(form));
+            let req = send_req(
+                client
+                    .post(format!("{}/api/v1/imports", cli.api_url))
+                    .multipart(form),
+            );
             let res = req.send().await?;
             if !res.status().is_success() {
                 let err_text = res.text().await?;
@@ -142,8 +153,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "Individus (adhérents & représentants légaux)",
                     &summary.individus_importes.to_string(),
                 ]);
-                table.add_row(vec!["Unités pédagogiques", &summary.unites_importees.to_string()]);
-                table.add_row(vec!["Inscriptions saison", &summary.inscriptions_importees.to_string()]);
+                table.add_row(vec![
+                    "Unités pédagogiques",
+                    &summary.unites_importees.to_string(),
+                ]);
+                table.add_row(vec![
+                    "Inscriptions saison",
+                    &summary.inscriptions_importees.to_string(),
+                ]);
                 table.add_row(vec![
                     "Liens de parenté enregistrés",
                     &summary.liens_parente_importes.to_string(),
@@ -156,7 +173,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let req = send_req(client.get(format!("{}/api/v1/units", cli.api_url)));
                 let res = req.send().await?;
                 if !res.status().is_success() {
-                    eprintln!("Erreur lors de la récupération des unités : {}", res.status());
+                    eprintln!(
+                        "Erreur lors de la récupération des unités : {}",
+                        res.status()
+                    );
                     std::process::exit(1);
                 }
 
@@ -167,7 +187,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     let mut table = Table::new();
                     table.load_preset(UTF8_FULL);
-                    table.set_header(vec!["ID", "Code Structure", "Nom de l'Unité", "Effectif", "JID WhatsApp"]);
+                    table.set_header(vec![
+                        "ID",
+                        "Code Structure",
+                        "Nom de l'Unité",
+                        "Effectif",
+                        "JID WhatsApp",
+                    ]);
                     for u in units {
                         table.add_row(vec![
                             u.id.to_string(),
@@ -181,7 +207,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             UnitsCommands::Show { id } => {
-                let req = send_req(client.get(format!("{}/api/v1/units/{}/members", cli.api_url, id)));
+                let req =
+                    send_req(client.get(format!("{}/api/v1/units/{}/members", cli.api_url, id)));
                 let res = req.send().await?;
                 if !res.status().is_success() {
                     eprintln!("Unité introuvable ou erreur : {}", res.status());
@@ -196,7 +223,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("=== {} (Saison {}) ===", details.unit.nom, details.saison);
                     println!(
                         "JID WhatsApp : {}",
-                        details.unit.whatsapp_group_jid.as_deref().unwrap_or("Non configuré")
+                        details
+                            .unit
+                            .whatsapp_group_jid
+                            .as_deref()
+                            .unwrap_or("Non configuré")
                     );
                     println!();
 
@@ -266,7 +297,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Commands::Export { command } => match command {
             ExportCommands::GoogleContacts => {
-                let req = send_req(client.get(format!("{}/api/v1/exports/google-contacts", cli.api_url)));
+                let req =
+                    send_req(client.get(format!("{}/api/v1/exports/google-contacts", cli.api_url)));
                 let res = req.send().await?;
                 if !res.status().is_success() {
                     eprintln!("Erreur lors de l'export des contacts : {}", res.status());

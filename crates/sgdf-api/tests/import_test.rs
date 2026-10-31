@@ -16,7 +16,9 @@ async fn test_import_gestact_xls_end_to_end() {
     let boundary = "------------------------boundary123456789";
     let mut body = Vec::new();
     body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"ExportIndividus.xls\"\r\n");
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"ExportIndividus.xls\"\r\n",
+    );
     body.extend_from_slice(b"Content-Type: application/vnd.ms-excel\r\n\r\n");
     body.extend_from_slice(&file_bytes);
     body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
@@ -24,7 +26,10 @@ async fn test_import_gestact_xls_end_to_end() {
     let req = Request::builder()
         .method("POST")
         .uri("/api/v1/imports")
-        .header("Content-Type", format!("multipart/form-data; boundary={}", boundary))
+        .header(
+            "Content-Type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
         .body(Body::from(body))
         .unwrap();
 
@@ -40,9 +45,18 @@ async fn test_import_gestact_xls_end_to_end() {
     let total_liens = summary["liens_parente_importes"].as_i64().unwrap();
 
     assert_eq!(total_unites, 7, "Il doit y avoir exactement 7 unités");
-    assert_eq!(total_inscriptions, 112, "L'export contient 112 lignes d'inscriptions");
-    assert!(total_individus > 150, "Le total d'individus doit inclure adhérents et parents dédupliqués");
-    assert!(total_liens > 100, "Des liens de parenté doivent être enregistrés");
+    assert_eq!(
+        total_inscriptions, 112,
+        "L'export contient 112 lignes d'inscriptions"
+    );
+    assert!(
+        total_individus > 150,
+        "Le total d'individus doit inclure adhérents et parents dédupliqués"
+    );
+    assert!(
+        total_liens > 100,
+        "Des liens de parenté doivent être enregistrés"
+    );
 
     // Vérifier la déduplication de Laurent Vaylet (présent comme Responsable de Groupe ET comme parent de Lisa et Lucie)
     let laurent_rows: Vec<sqlx::sqlite::SqliteRow> = sqlx::query(
@@ -52,14 +66,26 @@ async fn test_import_gestact_xls_end_to_end() {
     .await
     .unwrap();
 
-    assert_eq!(laurent_rows.len(), 1, "Laurent Vaylet doit être dédupliqué en un seul enregistrement Individu");
+    assert_eq!(
+        laurent_rows.len(),
+        1,
+        "Laurent Vaylet doit être dédupliqué en un seul enregistrement Individu"
+    );
     let laurent = &laurent_rows[0];
-    assert_eq!(laurent.get::<Option<String>, _>("code_adherent").as_deref(), Some("164620934"));
-    assert_eq!(laurent.get::<Option<String>, _>("telephone_mobile").as_deref(), Some("+33687966975"));
+    assert_eq!(
+        laurent.get::<Option<String>, _>("code_adherent").as_deref(),
+        Some("164620934")
+    );
+    assert_eq!(
+        laurent
+            .get::<Option<String>, _>("telephone_mobile")
+            .as_deref(),
+        Some("+33687966975")
+    );
 
     // Vérifier les liens de parenté pour Lisa Vaylet
     let lisa: sqlx::sqlite::SqliteRow = sqlx::query(
-        "SELECT id FROM individus WHERE UPPER(nom) = 'VAYLET' AND UPPER(prenom) = 'LISA'"
+        "SELECT id FROM individus WHERE UPPER(nom) = 'VAYLET' AND UPPER(prenom) = 'LISA'",
     )
     .fetch_one(&pool)
     .await
@@ -70,7 +96,7 @@ async fn test_import_gestact_xls_end_to_end() {
         "SELECT i.prenom FROM liens_parente lp
          JOIN individus i ON i.id = lp.parent_id
          WHERE lp.jeune_id = ?
-         ORDER BY lp.ordre"
+         ORDER BY lp.ordre",
     )
     .bind(lisa_id)
     .fetch_all(&pool)

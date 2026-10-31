@@ -100,24 +100,30 @@ Ce dépôt est un **Cargo Workspace** découpé en trois crates :
 
 ## 🚀 Installation & Développement
 
-### Avec Nix (Recommandé)
+### Avec Nix & direnv (Recommandé)
 
-Le projet utilise un [Nix Flake](https://nixos.wiki/wiki/Flakes) garantissant un environnement de développement parfaitement reproductible.
+Le projet utilise un [Nix Flake](https://nixos.wiki/wiki/Flakes) couplé à [direnv](https://direnv.net/) et [just](https://github.com/casey/just) pour un environnement de développement sans friction :
 
-1. **Entrer dans le shell de développement** :
+1. **Activation automatique avec direnv** :
+   Le fichier `.envrc` est configuré avec `use flake`. Dès que vous entrez dans le répertoire, votre shell charge automatiquement tous les outils (`rustc`, `cargo`, `clippy`, `rustfmt`, `rust-analyzer`, `sqlx-cli`, `sqlite`, `just`, etc.) :
    ```bash
-   nix develop
+   direnv allow
    ```
-   Ce shell charge automatiquement `rustc`, `cargo`, `clippy`, `rustfmt`, `rust-analyzer`, `sqlx-cli`, `sqlite`, `pkg-config` et `openssl`.
+   *(Ou manuellement sans direnv via `nix develop`).*
 
-2. **Lancer les tests unitaires** :
+2. **Commandes SDLC avec `just`** :
+   Un `justfile` regroupe les opérations les plus courantes :
    ```bash
-   cargo test
-   ```
-
-3. **Vérifier le code avec Clippy** :
-   ```bash
-   cargo clippy
+   just                # Affiche l'aide et la liste des recettes disponibles
+   just build          # Compile l'ensemble du workspace
+   just test           # Lance tous les tests unitaires et d'intégration
+   just lint           # Lance clippy avec arrêt sur warning (-D warnings)
+   just fmt            # Formate automatiquement le code avec rustfmt
+   just fmt-check      # Vérifie le formatage sans modifier les fichiers
+   just verify         # Exécute la chaîne qualité complète (fmt-check + lint + test)
+   just run-api        # Démarre l'API locale avec SQLite
+   just cli status     # Exécute la CLI (ex. just cli units list)
+   just import         # Raccourci pour importer assets/ExportIndividus.xls
    ```
 
 ### Sans Nix
@@ -126,6 +132,7 @@ Assurez-vous de disposer d'une toolchain Rust récente (>= 1.80) ainsi que des b
 - `pkg-config`
 - `openssl` (headers de développement)
 - `sqlite3`
+- `just` (optionnel)
 
 Puis :
 ```bash
