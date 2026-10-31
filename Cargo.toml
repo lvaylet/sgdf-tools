@@ -18,6 +18,7 @@ rust-version = "1.80"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 encoding_rs = "0.8"
+html-escape = "0.2"
 phonenumber = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 scraper = "0.22"

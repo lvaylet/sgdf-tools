@@ -1,17 +1,19 @@
-use axum::{routing::get, Router};
+use sgdf_api::build_app;
+use sgdf_core::db::create_pool;
 use std::net::SocketAddr;
 use tracing::info;
-
-async fn health_check() -> &'static str {
-    "OK"
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let app = Router::new()
-        .route("/health", get(health_check));
+    let db_url = std::env::var("SGDF_DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite://sgdf.db?mode=rwc".to_string());
+    let pool = create_pool(&db_url).await?;
+
+    let auth_token = std::env::var("SGDF_AUTH_TOKEN").ok();
+
+    let app = build_app(pool, auth_token);
 
     let host = std::env::var("SGDF_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = std::env::var("SGDF_PORT")

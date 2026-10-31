@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 chrono.workspace = true
 encoding_rs.workspace = true
+html-escape.workspace = true
 phonenumber.workspace = true
 scraper.workspace = true
 serde.workspace = true
