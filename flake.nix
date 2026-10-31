@@ -31,17 +31,28 @@
             sqlite
           ];
 
+          postInstall = ''
+            ln -s sgdf $out/bin/sgdf-cli
+          '';
+
           doCheck = false;
         };
 
-        sgdf-api = pkgs.runCommand "sgdf-api-0.1.0" { } ''
-          mkdir -p $out/bin
-          cp ${workspacePackage}/bin/sgdf-api $out/bin/
-        '';
+        extractBin = binName:
+          pkgs.runCommand "${binName}-${workspacePackage.version}" {
+            meta.mainProgram = binName;
+          } ''
+            mkdir -p $out/bin
+            cp ${workspacePackage}/bin/${binName} $out/bin/
+          '';
 
-        sgdf-cli = pkgs.runCommand "sgdf-cli-0.1.0" { } ''
+        sgdf-api = extractBin "sgdf-api";
+        sgdf-cli = pkgs.runCommand "sgdf-cli-${workspacePackage.version}" {
+          meta.mainProgram = "sgdf";
+        } ''
           mkdir -p $out/bin
-          cp ${workspacePackage}/bin/sgdf-cli $out/bin/
+          cp ${workspacePackage}/bin/sgdf $out/bin/
+          ln -s sgdf $out/bin/sgdf-cli
         '';
       in
       {

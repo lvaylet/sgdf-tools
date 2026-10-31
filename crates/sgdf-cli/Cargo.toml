@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "sgdf"
+path = "src/main.rs"
+
 [dependencies]
 sgdf-core = { path = "../sgdf-core" }
 clap.workspace = true
