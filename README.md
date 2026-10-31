@@ -31,6 +31,7 @@ Suite d'outils écrite en Rust pour faciliter la gestion administrative et opér
    - Extraction des jeunes adhérents rattachés à leurs unités pédagogiques (Farfadets, Louveteaux-Jeannettes, Scouts-Guides, Pionniers-Caravelles, Compagnons).
    - Déduplication automatique des représentants légaux (parents) ayant plusieurs enfants dans différentes unités ou occupant des fonctions bénévoles (parents animateurs, cadres).
    - Normalisation systématique des numéros de téléphone au format international **E.164** (ex. `+33612345678`).
+   - Consultation et listing complet des représentants légaux avec leurs coordonnées téléphoniques (mobile et domicile) et adresses postales.
 
 3. **Synchronisation Google Contacts (via n8n)** :
    - Exposition d'un endpoint API générant des fiches prêtes à l'emploi avec noms, téléphones, courriels, filiation dans le champ note (ex. `Parent de : Lisa (Scouts-Guides), Lucie (Farfadets)`) et labels d'unités (`SGDF`, `SGDF - Scouts-Guides`).
@@ -197,6 +198,10 @@ sgdf import assets/ExportIndividus.xls
 sgdf units list
 sgdf units show 1
 sgdf units set-jid 1 "120363028374659281@g.us"
+
+# Consulter tous les représentants légaux avec coordonnées téléphoniques et postales
+sgdf representants list
+sgdf representants list --json
 
 # Exporter les contacts normalisés pour Google Contacts
 sgdf export google-contacts --json

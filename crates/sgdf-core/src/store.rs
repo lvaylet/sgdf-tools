@@ -1,6 +1,7 @@
 use crate::domain::{
-    AdherentDetails, GoogleContactEntry, RepresentantLegalSummary, UnitAdherentsResponse,
-    UnitSummary, Unite, WhatsappAuditMissing, WhatsappAuditResponse,
+    AdherentDetails, GoogleContactEntry, JeuneRattache, RepresentantLegalDetail,
+    RepresentantLegalSummary, UnitAdherentsResponse, UnitSummary, Unite, WhatsappAuditMissing,
+    WhatsappAuditResponse,
 };
 use chrono::NaiveDate;
 use sqlx::{Row, SqlitePool};
@@ -556,4 +557,81 @@ pub async fn audit_unit_whatsapp(
     unknown.sort();
 
     Ok(Some(WhatsappAuditResponse { missing, unknown }))
+}
+
+pub async fn get_representants_legaux(
+    pool: &SqlitePool,
+) -> Result<Vec<RepresentantLegalDetail>, sqlx::Error> {
+    let saison_row =
+        sqlx::query("SELECT id FROM saisons WHERE active = 1 ORDER BY date_debut DESC LIMIT 1")
+            .fetch_optional(pool)
+            .await?;
+
+    let saison_id: i64 = match saison_row {
+        Some(r) => r.get("id"),
+        None => return Ok(vec![]),
+    };
+
+    let rows = sqlx::query(
+        "SELECT p.id as parent_id, p.nom as parent_nom, p.prenom as parent_prenom,
+                p.civilite as parent_civilite, p.code_adherent as parent_code_adherent,
+                p.telephone_mobile as parent_mobile, p.telephone_domicile as parent_domicile,
+                p.courriel_personnel as parent_courriel_perso, p.courriel_sgdf as parent_courriel_sgdf,
+                p.adresse_ligne1 as parent_adr1, p.adresse_ligne2 as parent_adr2,
+                p.adresse_code_postal as parent_cp, p.adresse_ville as parent_ville,
+                j.nom as jeune_nom, j.prenom as jeune_prenom,
+                u.nom as unite_nom
+         FROM liens_parente lp
+         JOIN individus p ON p.id = lp.parent_id
+         JOIN individus j ON j.id = lp.jeune_id
+         JOIN inscriptions insc ON insc.individu_id = j.id AND insc.saison_id = lp.saison_id AND insc.active = 1
+         JOIN unites u ON u.id = insc.unite_id
+         WHERE lp.saison_id = ?
+         ORDER BY p.nom, p.prenom, j.nom, j.prenom",
+    )
+    .bind(saison_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut reps_map: HashMap<i64, RepresentantLegalDetail> = HashMap::new();
+
+    for r in rows {
+        let parent_id: i64 = r.get("parent_id");
+        let jeune_nom: String = r.get("jeune_nom");
+        let jeune_prenom: String = r.get("jeune_prenom");
+        let unite_nom: String = r.get("unite_nom");
+
+        let entry = reps_map
+            .entry(parent_id)
+            .or_insert_with(|| RepresentantLegalDetail {
+                id: parent_id,
+                nom: r.get("parent_nom"),
+                prenom: r.get("parent_prenom"),
+                civilite: r.get("parent_civilite"),
+                code_adherent: r.get("parent_code_adherent"),
+                telephone_mobile: r.get("parent_mobile"),
+                telephone_domicile: r.get("parent_domicile"),
+                courriel_personnel: r.get("parent_courriel_perso"),
+                courriel_sgdf: r.get("parent_courriel_sgdf"),
+                adresse_ligne1: r.get("parent_adr1"),
+                adresse_ligne2: r.get("parent_adr2"),
+                adresse_code_postal: r.get("parent_cp"),
+                adresse_ville: r.get("parent_ville"),
+                jeunes: Vec::new(),
+            });
+
+        let jeune = JeuneRattache {
+            nom: jeune_nom,
+            prenom: jeune_prenom,
+            unite: unite_nom,
+        };
+        if !entry.jeunes.contains(&jeune) {
+            entry.jeunes.push(jeune);
+        }
+    }
+
+    let mut reps: Vec<RepresentantLegalDetail> = reps_map.into_values().collect();
+    reps.sort_by(|a, b| a.nom.cmp(&b.nom).then_with(|| a.prenom.cmp(&b.prenom)));
+
+    Ok(reps)
 }

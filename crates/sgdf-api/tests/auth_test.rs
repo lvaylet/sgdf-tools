@@ -75,6 +75,15 @@ async fn test_auth_middleware_protects_api_routes() {
     let res_export = app.clone().oneshot(req_export).await.unwrap();
     assert_eq!(res_export.status(), StatusCode::UNAUTHORIZED);
 
+    let req_reps = Request::builder()
+        .method("GET")
+        .uri("/api/v1/representants-legaux")
+        .body(Body::empty())
+        .unwrap();
+
+    let res_reps = app.clone().oneshot(req_reps).await.unwrap();
+    assert_eq!(res_reps.status(), StatusCode::UNAUTHORIZED);
+
     let req_audit = Request::builder()
         .method("POST")
         .uri("/api/v1/units/1/whatsapp-audit")

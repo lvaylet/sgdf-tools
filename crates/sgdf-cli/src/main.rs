@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand};
 use comfy_table::{presets::UTF8_FULL, Table};
 use reqwest::multipart::{Form, Part};
 use sgdf_core::domain::{
-    GoogleContactEntry, ImportSummary, UnitAdherentsResponse, UnitSummary, Unite,
-    WhatsappAuditRequest, WhatsappAuditResponse,
+    GoogleContactEntry, ImportSummary, RepresentantLegalDetail, UnitAdherentsResponse, UnitSummary,
+    Unite, WhatsappAuditRequest, WhatsappAuditResponse,
 };
 use std::path::PathBuf;
 
@@ -42,6 +42,12 @@ enum Commands {
         command: UnitsCommands,
     },
 
+    /// Consultation des représentants légaux
+    Representants {
+        #[command(subcommand)]
+        command: RepresentantsCommands,
+    },
+
     /// Exportations des données consolidées du groupe
     Export {
         #[command(subcommand)]
@@ -73,6 +79,12 @@ enum UnitsCommands {
         /// JID du groupe WhatsApp (ex: 120363xxx@g.us)
         jid: String,
     },
+}
+
+#[derive(Subcommand)]
+enum RepresentantsCommands {
+    /// Liste tous les représentants légaux avec coordonnées téléphoniques et postales
+    List,
 }
 
 #[derive(Subcommand)]
@@ -322,6 +334,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         updated.nom,
                         updated.whatsapp_group_jid.as_deref().unwrap_or("-")
                     );
+                }
+            }
+        },
+        Commands::Representants { command } => match command {
+            RepresentantsCommands::List => {
+                let req =
+                    send_req(client.get(format!("{}/api/v1/representants-legaux", cli.api_url)));
+                let res = handle_response(
+                    req.send().await?,
+                    "la récupération des représentants légaux",
+                )
+                .await?;
+                let reps: Vec<RepresentantLegalDetail> = res.json().await?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&reps)?);
+                } else {
+                    let mut table = Table::new();
+                    table.load_preset(UTF8_FULL);
+                    table.set_header(vec![
+                        "Nom & Prénom",
+                        "Mobile",
+                        "Domicile",
+                        "Adresse Postale",
+                        "Courriel",
+                        "Jeunes rattachés",
+                    ]);
+
+                    for r in reps {
+                        let mut addr_lines = Vec::new();
+                        if let Some(l1) = r.adresse_ligne1.as_deref().filter(|s| !s.is_empty()) {
+                            addr_lines.push(l1);
+                        }
+                        if let Some(l2) = r.adresse_ligne2.as_deref().filter(|s| !s.is_empty()) {
+                            addr_lines.push(l2);
+                        }
+                        let cp_ville = match (
+                            r.adresse_code_postal.as_deref().filter(|s| !s.is_empty()),
+                            r.adresse_ville.as_deref().filter(|s| !s.is_empty()),
+                        ) {
+                            (Some(cp), Some(v)) => Some(format!("{} {}", cp, v)),
+                            (Some(cp), None) => Some(cp.to_string()),
+                            (None, Some(v)) => Some(v.to_string()),
+                            (None, None) => None,
+                        };
+                        if let Some(cv) = cp_ville.as_deref() {
+                            addr_lines.push(cv);
+                        }
+                        let adresse_str = if addr_lines.is_empty() {
+                            "-".to_string()
+                        } else {
+                            addr_lines.join("\n")
+                        };
+
+                        let email = r
+                            .courriel_personnel
+                            .or(r.courriel_sgdf)
+                            .unwrap_or_else(|| "-".to_string());
+
+                        let jeunes_str = if r.jeunes.is_empty() {
+                            "-".to_string()
+                        } else {
+                            r.jeunes
+                                .iter()
+                                .map(|j| format!("{} {} ({})", j.prenom, j.nom, j.unite))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        };
+
+                        table.add_row(vec![
+                            format!("{} {}", r.nom, r.prenom),
+                            r.telephone_mobile.unwrap_or_else(|| "-".to_string()),
+                            r.telephone_domicile.unwrap_or_else(|| "-".to_string()),
+                            adresse_str,
+                            email,
+                            jeunes_str,
+                        ]);
+                    }
+                    println!("{}", table);
                 }
             }
         },

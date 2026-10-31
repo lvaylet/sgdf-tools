@@ -93,6 +93,31 @@ pub struct RepresentantLegalSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JeuneRattache {
+    pub nom: String,
+    pub prenom: String,
+    pub unite: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepresentantLegalDetail {
+    pub id: i64,
+    pub nom: String,
+    pub prenom: String,
+    pub civilite: Option<String>,
+    pub code_adherent: Option<String>,
+    pub telephone_mobile: Option<String>,
+    pub telephone_domicile: Option<String>,
+    pub courriel_personnel: Option<String>,
+    pub courriel_sgdf: Option<String>,
+    pub adresse_ligne1: Option<String>,
+    pub adresse_ligne2: Option<String>,
+    pub adresse_code_postal: Option<String>,
+    pub adresse_ville: Option<String>,
+    pub jeunes: Vec<JeuneRattache>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdherentDetails {
     pub id: i64,
     pub nom: String,

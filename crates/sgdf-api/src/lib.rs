@@ -26,6 +26,7 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
         .route("/v1/units/{id}", patch(update_unit))
         .route("/v1/units/{id}/members", get(get_unit_members))
         .route("/v1/exports/google-contacts", get(export_google_contacts))
+        .route("/v1/representants-legaux", get(list_representants_legaux))
         .route(
             "/v1/units/{id}/whatsapp-audit",
             post(audit_unit_whatsapp_handler),
@@ -230,4 +231,19 @@ async fn audit_unit_whatsapp_handler(
             Json(json!({ "error": format!("Unité avec l'id {} introuvable", id) })),
         )),
     }
+}
+
+async fn list_representants_legaux(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let reps = sgdf_core::store::get_representants_legaux(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+            )
+        })?;
+
+    Ok((StatusCode::OK, Json(reps)))
 }
