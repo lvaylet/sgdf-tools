@@ -93,6 +93,20 @@ enum AuditCommands {
     },
 }
 
+fn parse_participants_input(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    if trimmed.starts_with('[') {
+        if let Ok(list) = serde_json::from_str::<Vec<String>>(trimmed) {
+            return list;
+        }
+    }
+    trimmed
+        .split([',', '\n', '\r', ';'])
+        .map(|s| s.trim().trim_matches('"').trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -364,22 +378,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     participants.clone()
                 };
 
-                let participant_list: Vec<String> = if content.trim().starts_with('[') {
-                    match serde_json::from_str::<Vec<String>>(&content) {
-                        Ok(list) => list,
-                        Err(_) => content
-                            .split([',', '\n', '\r', ';'])
-                            .map(|s| s.trim().trim_matches('"').trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect(),
-                    }
-                } else {
-                    content
-                        .split([',', '\n', '\r', ';'])
-                        .map(|s| s.trim().trim_matches('"').trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect()
-                };
+                let participant_list = parse_participants_input(&content);
 
                 let audit_payload = WhatsappAuditRequest {
                     participants: participant_list,
@@ -413,9 +412,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                     println!();
 
-                    println!("--- Contacts manquants ({}) ---", audit_res.missing.len());
+                    println!(
+                        "--- Représentants légaux ou adhérents manquants ({}) ---",
+                        audit_res.missing.len()
+                    );
                     if audit_res.missing.is_empty() {
-                        println!("Aucun contact manquant. Tous les membres attendus sont dans le groupe !");
+                        println!("Aucun manquant. Tous les représentants ou adhérents attendus sont dans le groupe !");
                     } else {
                         let mut table = Table::new();
                         table.load_preset(UTF8_FULL);

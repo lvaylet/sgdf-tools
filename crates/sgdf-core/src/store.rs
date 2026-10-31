@@ -705,6 +705,9 @@ pub async fn get_google_contacts_export(
     Ok(contacts)
 }
 
+// Codes fonctions officiels SGDF pour les jeunes mineurs (Farfadets, Louveteaux-Jeannettes, Scouts-Guides, Pionniers-Caravelles)
+const YOUTH_FUNCTION_CODES_SQL: &str = "'110', '111', '120', '121', '130', '131', '170'";
+
 pub async fn audit_unit_whatsapp(
     pool: &SqlitePool,
     unit_id: i64,
@@ -741,18 +744,7 @@ pub async fn audit_unit_whatsapp(
     let mut participants_set = BTreeSet::new();
 
     for raw in raw_participants {
-        let norm = match crate::phone::normalize_phone(raw) {
-            Some(n) => n,
-            None => {
-                let cleaned = if let Some((before_at, _)) = raw.split_once('@') {
-                    before_at.trim()
-                } else {
-                    raw.trim()
-                };
-                cleaned.to_string()
-            }
-        };
-
+        let norm = crate::phone::normalize_phone(raw).unwrap_or_else(|| raw.trim().to_string());
         if !norm.is_empty() {
             participants_set.insert(norm.clone());
             if !normalized_participants.contains(&norm) {
@@ -787,19 +779,21 @@ pub async fn audit_unit_whatsapp(
     }
 
     // 5. Déterminer si l'unité est une unité de jeunes mineurs (Farfadets, Louveteaux, Scouts, Pionniers)
-    let youth_count: i64 = sqlx::query_scalar(
+    let youth_query = format!(
         "SELECT COUNT(*) FROM inscriptions
          WHERE unite_id = ? AND saison_id = ? AND active = 1
-           AND fonction_code IN ('110', '111', '120', '121', '130', '131', '170')",
-    )
-    .bind(unit_id)
-    .bind(saison_id)
-    .fetch_one(pool)
-    .await?;
+           AND fonction_code IN ({})",
+        YOUTH_FUNCTION_CODES_SQL
+    );
+    let youth_count: i64 = sqlx::query_scalar(&youth_query)
+        .bind(unit_id)
+        .bind(saison_id)
+        .fetch_one(pool)
+        .await?;
 
     let is_youth_unit = youth_count > 0;
 
-    struct ExpectedContact {
+    struct ExpectedIndividu {
         nom: String,
         prenom: String,
         mobile: Option<String>,
@@ -807,11 +801,11 @@ pub async fn audit_unit_whatsapp(
         jeunes: BTreeSet<String>,
     }
 
-    let mut expected_map: HashMap<i64, ExpectedContact> = HashMap::new();
+    let mut expected_map: HashMap<i64, ExpectedIndividu> = HashMap::new();
 
     if is_youth_unit {
         // Unité de jeunes : les contacts attendus sont les représentants légaux des jeunes inscrits
-        let rep_rows = sqlx::query(
+        let rep_query = format!(
             "SELECT p.id as rep_id, p.nom as rep_nom, p.prenom as rep_prenom,
                     p.telephone_mobile as rep_mobile, p.telephone_domicile as rep_domicile,
                     j.nom as jeune_nom, j.prenom as jeune_prenom
@@ -820,13 +814,15 @@ pub async fn audit_unit_whatsapp(
              JOIN individus j ON j.id = lp.jeune_id
              JOIN inscriptions insc ON insc.individu_id = j.id AND insc.saison_id = lp.saison_id AND insc.active = 1
              WHERE insc.unite_id = ? AND lp.saison_id = ?
-               AND insc.fonction_code IN ('110', '111', '120', '121', '130', '131', '170')
+               AND insc.fonction_code IN ({})
              ORDER BY p.nom, p.prenom, j.prenom",
-        )
-        .bind(unit_id)
-        .bind(saison_id)
-        .fetch_all(pool)
-        .await?;
+            YOUTH_FUNCTION_CODES_SQL
+        );
+        let rep_rows = sqlx::query(&rep_query)
+            .bind(unit_id)
+            .bind(saison_id)
+            .fetch_all(pool)
+            .await?;
 
         for r in rep_rows {
             let rep_id: i64 = r.get("rep_id");
@@ -846,7 +842,7 @@ pub async fn audit_unit_whatsapp(
 
             let entry = expected_map
                 .entry(rep_id)
-                .or_insert_with(|| ExpectedContact {
+                .or_insert_with(|| ExpectedIndividu {
                     nom: rep_nom,
                     prenom: rep_prenom,
                     mobile: rep_mobile,
@@ -869,7 +865,7 @@ pub async fn audit_unit_whatsapp(
 
             expected_map.insert(
                 ind_id,
-                ExpectedContact {
+                ExpectedIndividu {
                     nom,
                     prenom,
                     mobile,
