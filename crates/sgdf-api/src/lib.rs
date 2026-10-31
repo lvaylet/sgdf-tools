@@ -117,20 +117,17 @@ async fn import_gestact_file(
         ));
     }
 
-    let parsed_rows = sgdf_core::parser::parse_gestact_export(&file_bytes).map_err(|e| {
-        (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({ "error": format!("Erreur lors du parsing du fichier : {}", e) })),
-        )
-    })?;
-
-    let summary = sgdf_core::store::import_rows(&state.pool, &parsed_rows)
+    let summary = sgdf_core::ingestion::import_gestact_export(&state.pool, &file_bytes)
         .await
-        .map_err(|e| {
-            (
+        .map_err(|e| match e {
+            sgdf_core::ingestion::IngestionError::InvalidFormat(err) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "error": format!("Erreur lors du parsing du fichier : {}", err) })),
+            ),
+            sgdf_core::ingestion::IngestionError::Database(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
-            )
+                Json(json!({ "error": format!("Erreur de base de données : {}", err) })),
+            ),
         })?;
 
     Ok((StatusCode::OK, Json(summary)))

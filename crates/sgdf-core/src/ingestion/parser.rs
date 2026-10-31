@@ -1,4 +1,3 @@
-use crate::domain::{ParsedRepresentantLegal, ParsedRow};
 use crate::phone::normalize_phone;
 use chrono::NaiveDate;
 use scraper::{Html, Selector};
@@ -12,6 +11,49 @@ pub enum ParserError {
 
     #[error("Erreur de parsing de date : {0}")]
     DateParse(#[from] chrono::ParseError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ParsedRepresentantLegal {
+    pub civilite: Option<String>,
+    pub code_adherent: Option<String>,
+    pub nom: String,
+    pub prenom: String,
+    pub telephone_mobile: Option<String>,
+    pub telephone_domicile: Option<String>,
+    pub courriel_personnel: Option<String>,
+    pub courriel_sgdf: Option<String>,
+    pub adresse_ligne1: Option<String>,
+    pub adresse_code_postal: Option<String>,
+    pub adresse_ville: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ParsedRow {
+    pub civilite: Option<String>,
+    pub code_adherent: Option<String>,
+    pub nom: String,
+    pub prenom: String,
+    pub structure_code: String,
+    pub structure_nom: String,
+    pub fonction_code: Option<String>,
+    pub fonction_nom: Option<String>,
+    pub date_naissance: Option<NaiveDate>,
+    pub telephone_mobile: Option<String>,
+    pub telephone_domicile: Option<String>,
+    pub courriel_personnel: Option<String>,
+    pub courriel_sgdf: Option<String>,
+    pub adresse_ligne1: Option<String>,
+    pub adresse_ligne2: Option<String>,
+    pub adresse_code_postal: Option<String>,
+    pub adresse_ville: Option<String>,
+    pub autorisation_soins: bool,
+    pub droit_image_interne: bool,
+    pub droit_image_externe: bool,
+    pub date_debut_adhesion: Option<NaiveDate>,
+    pub date_fin_adhesion: Option<NaiveDate>,
+    pub statut_adhesion: Option<String>,
+    pub representants_legaux: Vec<ParsedRepresentantLegal>,
 }
 
 fn clean_text(raw: &str) -> String {
@@ -67,7 +109,7 @@ fn extract_phone(
     raw.as_deref().and_then(normalize_phone).or(raw)
 }
 
-pub fn parse_gestact_export(bytes: &[u8]) -> Result<Vec<ParsedRow>, ParserError> {
+pub(crate) fn parse_gestact_export(bytes: &[u8]) -> Result<Vec<ParsedRow>, ParserError> {
     let (decoded, _, _) = encoding_rs::WINDOWS_1252.decode(bytes);
     let document = Html::parse_document(&decoded);
 
@@ -303,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_parse_sample_file() {
-        let bytes = include_bytes!("../../../assets/ExportIndividus.xls");
+        let bytes = include_bytes!("../../../../assets/ExportIndividus.xls");
         let rows = parse_gestact_export(bytes).expect("Le fichier doit être parsable");
         assert_eq!(rows.len(), 112);
 

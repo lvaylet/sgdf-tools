@@ -8,8 +8,9 @@ async fn setup_app_with_data() -> (sqlx::SqlitePool, axum::Router) {
     let file_bytes = tokio::fs::read("../../assets/ExportIndividus.xls")
         .await
         .expect("assets/ExportIndividus.xls doit exister");
-    let rows = sgdf_core::parser::parse_gestact_export(&file_bytes).unwrap();
-    sgdf_core::store::import_rows(&pool, &rows).await.unwrap();
+    sgdf_core::ingestion::import_gestact_export(&pool, &file_bytes)
+        .await
+        .unwrap();
 
     let app = sgdf_api::build_app(pool.clone(), None);
     (pool, app)

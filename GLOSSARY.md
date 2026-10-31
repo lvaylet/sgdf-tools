@@ -39,3 +39,7 @@ _Avoid_: Filiation, rattachement, parenté
 **Fonction**:
 Le rôle ou la mission attribuée à un individu au sein du groupe ou d'une unité pour une année donnée (ex. Responsable de Groupe, Chef d'unité, Parent Animateur Farfadet).
 _Avoid_: Rôle, poste, titre
+
+**Export Gest'Act**:
+Le fichier d'extraction des adhérents et inscriptions issu de l'intranet associatif Gest'Act, généré sous la forme d'un tableau HTML encodé en Windows-1252 portant l'extension `.xls`.
+_Avoid_: Fichier Excel, CSV, listing
