@@ -120,7 +120,7 @@ async fn get_unit_members(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let details = sgdf_core::store::get_unit_members(&state.pool, id)
+    let details = sgdf_core::store::get_unit_adherents(&state.pool, id)
         .await
         .map_err(|e| {
             (

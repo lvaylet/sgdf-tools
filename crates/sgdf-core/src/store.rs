@@ -1,5 +1,5 @@
 use crate::domain::{
-    ImportSummary, MemberDetails, ParsedRow, RepresentantLegalSummary, UnitMembersResponse,
+    AdherentDetails, ImportSummary, ParsedRow, RepresentantLegalSummary, UnitAdherentsResponse,
     UnitSummary, Unite,
 };
 use chrono::{Datelike, NaiveDate};
@@ -360,10 +360,10 @@ async fn upsert_individu(
 pub async fn get_units(pool: &SqlitePool) -> Result<Vec<UnitSummary>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT u.id, u.code_structure, u.nom, u.whatsapp_group_jid,
-                COUNT(i.id) as members_count
+                COUNT(i.id) as adherents_count
          FROM unites u
          LEFT JOIN inscriptions i ON i.unite_id = u.id AND i.active = 1
-         LEFT JOIN saisons s ON s.id = i.saison_id AND s.active = 1
+              AND i.saison_id = (SELECT id FROM saisons WHERE active = 1 ORDER BY date_debut DESC LIMIT 1)
          GROUP BY u.id
          ORDER BY u.nom",
     )
@@ -377,7 +377,7 @@ pub async fn get_units(pool: &SqlitePool) -> Result<Vec<UnitSummary>, sqlx::Erro
             code_structure: r.get("code_structure"),
             nom: r.get("nom"),
             whatsapp_group_jid: r.get("whatsapp_group_jid"),
-            members_count: r.get("members_count"),
+            adherents_count: r.get("adherents_count"),
         })
         .collect();
 
@@ -410,10 +410,10 @@ pub async fn update_unit_jid(
     Ok(unit)
 }
 
-pub async fn get_unit_members(
+pub async fn get_unit_adherents(
     pool: &SqlitePool,
     unit_id: i64,
-) -> Result<Option<UnitMembersResponse>, sqlx::Error> {
+) -> Result<Option<UnitAdherentsResponse>, sqlx::Error> {
     let unit_row = sqlx::query(
         "SELECT id, code_structure, nom, whatsapp_group_jid
          FROM unites
@@ -442,10 +442,10 @@ pub async fn get_unit_members(
     let (saison_id, saison_libelle) = match saison_row {
         Some(r) => (r.get::<i64, _>("id"), r.get::<String, _>("libelle")),
         None => {
-            return Ok(Some(UnitMembersResponse {
+            return Ok(Some(UnitAdherentsResponse {
                 unit,
                 saison: "N/A".to_string(),
-                members: vec![],
+                adherents: vec![],
             }))
         }
     };
@@ -464,12 +464,13 @@ pub async fn get_unit_members(
     .fetch_all(pool)
     .await?;
 
-    let mut members = Vec::new();
+    let mut adherents = Vec::new();
 
     for m in member_rows {
-        let member_id: i64 = m.get("id");
-        let dn_str: Option<String> = m.get("date_naissance");
-        let date_naissance = dn_str.and_then(|s| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
+        let adherent_id: i64 = m.get("id");
+        let date_naissance_raw: Option<String> = m.get("date_naissance");
+        let date_naissance =
+            date_naissance_raw.and_then(|s| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
 
         let rep_rows = sqlx::query(
             "SELECT p.id, p.nom, p.prenom, p.telephone_mobile, p.courriel_personnel
@@ -478,7 +479,7 @@ pub async fn get_unit_members(
              WHERE lp.jeune_id = ? AND lp.saison_id = ?
              ORDER BY lp.ordre",
         )
-        .bind(member_id)
+        .bind(adherent_id)
         .bind(saison_id)
         .fetch_all(pool)
         .await?;
@@ -494,8 +495,8 @@ pub async fn get_unit_members(
             })
             .collect();
 
-        members.push(MemberDetails {
-            id: member_id,
+        adherents.push(AdherentDetails {
+            id: adherent_id,
             nom: m.get("nom"),
             prenom: m.get("prenom"),
             code_adherent: m.get("code_adherent"),
@@ -507,9 +508,9 @@ pub async fn get_unit_members(
         });
     }
 
-    Ok(Some(UnitMembersResponse {
+    Ok(Some(UnitAdherentsResponse {
         unit,
         saison: saison_libelle,
-        members,
+        adherents,
     }))
 }

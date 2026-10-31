@@ -44,7 +44,8 @@ pub struct UnitSummary {
     pub code_structure: String,
     pub nom: String,
     pub whatsapp_group_jid: Option<String>,
-    pub members_count: i64,
+    #[serde(alias = "members_count")]
+    pub adherents_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +58,7 @@ pub struct RepresentantLegalSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemberDetails {
+pub struct AdherentDetails {
     pub id: i64,
     pub nom: String,
     pub prenom: String,
@@ -70,14 +71,16 @@ pub struct MemberDetails {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UnitMembersResponse {
+pub struct UnitAdherentsResponse {
     pub unit: Unite,
     pub saison: String,
-    pub members: Vec<MemberDetails>,
+    #[serde(alias = "members")]
+    pub adherents: Vec<AdherentDetails>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateUnitPayload {
+    #[serde(default)]
     pub whatsapp_group_jid: Option<String>,
 }
 

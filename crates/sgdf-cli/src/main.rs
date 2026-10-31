@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use comfy_table::{presets::UTF8_FULL, Table};
 use reqwest::multipart::{Form, Part};
-use sgdf_core::domain::{ImportSummary, UnitMembersResponse, UnitSummary, Unite};
+use sgdf_core::domain::{ImportSummary, UnitAdherentsResponse, UnitSummary, Unite};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -32,7 +32,7 @@ enum Commands {
         file: PathBuf,
     },
 
-    /// Gestion des unités scoutes et de leurs membres
+    /// Consultation des unités scoutes et de leurs adhérents
     Units {
         #[command(subcommand)]
         command: UnitsCommands,
@@ -44,7 +44,7 @@ enum UnitsCommands {
     /// Liste les unités du groupe avec leurs effectifs et JID WhatsApp
     List,
 
-    /// Affiche les membres et représentants légaux d'une unité
+    /// Affiche les adhérents et représentants légaux d'une unité
     Show {
         /// Identifiant unique de l'unité
         id: i64,
@@ -159,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             u.id.to_string(),
                             u.code_structure,
                             u.nom,
-                            u.members_count.to_string(),
+                            u.adherents_count.to_string(),
                             u.whatsapp_group_jid.unwrap_or_else(|| "-".to_string()),
                         ]);
                     }
@@ -174,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
 
-                let details: UnitMembersResponse = res.json().await?;
+                let details: UnitAdherentsResponse = res.json().await?;
 
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&details)?);
@@ -196,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "Représentants Légaux",
                     ]);
 
-                    for m in details.members {
+                    for m in details.adherents {
                         let reps_str = if m.representants_legaux.is_empty() {
                             "-".to_string()
                         } else {
