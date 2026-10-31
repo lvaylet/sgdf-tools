@@ -177,17 +177,51 @@ La CLI est un client HTTP léger qui interroge l'API (voir [ADR-0002](docs/adr/0
 
 ```bash
 # Vérifier l'accès à l'API
-cargo run -p sgdf-cli -- status
+sgdf status
 
-# Cibler une instance distante avec authentification
-cargo run -p sgdf-cli -- --api-url https://sgdf.homelab.vaylet.fr --token "VOTRE_TOKEN" status
+# Importer un export Gest'Act
+sgdf import assets/ExportIndividus.xls
+
+# Consulter les unités et configurer un JID WhatsApp
+sgdf units list
+sgdf units show 1
+sgdf units set-jid 1 "120363028374659281@g.us"
+
+# Exporter les contacts normalisés pour Google Contacts
+sgdf export google-contacts --json
+
+# Réaliser un audit différentiel WhatsApp via les numéros extraits de WAHA
+sgdf audit whatsapp 1 --participants "+33687966975,0609266743"
+sgdf audit whatsapp 1 --participants /tmp/waha_participants.json
+
+# Cibler une instance distante avec authentification Bearer
+sgdf --api-url https://sgdf.homelab.vaylet.fr --token "VOTRE_TOKEN" status
 ```
 
 ---
 
-## ❄️ Déploiement sur NixOS
+## ❄️ Packaging & Déploiement Nix / NixOS
+
+### Compilation via Nix Flakes
+
+Le `flake.nix` fournit des packages hermétiques compilés via `buildRustPackage` :
+
+```bash
+# Compiler l'ensemble des binaires du workspace (sgdf-api et sgdf-cli)
+nix build
+
+# Compiler spécifiquement le serveur API ou la CLI
+nix build .#sgdf-api
+nix build .#sgdf-cli
+
+# Exécuter directement la CLI sans installation
+nix run .#sgdf-cli -- status
+```
+
+### Module système NixOS
 
 Le `flake.nix` exporte un module système NixOS prêt à l'emploi (`nixosModules.default`).
+Il configure automatiquement un service systemd durci (`DynamicUser = true`, persistance dans `StateDirectory = "sgdf-tools"`, et application automatique des migrations SQLite au démarrage).
 
 Exemple d'intégration dans votre configuration NixOS :
 

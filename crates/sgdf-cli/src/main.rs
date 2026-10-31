@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "sgdf")]
+#[command(version)]
 #[command(about = "CLI de gestion pour le groupe scout SGDF", long_about = None)]
 struct Cli {
     #[arg(long, env = "SGDF_API_URL", default_value = "http://127.0.0.1:3000")]
