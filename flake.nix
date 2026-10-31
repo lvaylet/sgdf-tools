@@ -74,6 +74,7 @@
             sqlite
             sqlx-cli
             just
+            markdownlint-cli2
           ];
 
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";

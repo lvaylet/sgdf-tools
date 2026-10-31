@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "🔍 [pre-commit] Vérification du formatage Rust et Markdown..."
+
+if command -v cargo >/dev/null 2>&1 && command -v markdownlint-cli2 >/dev/null 2>&1; then
+    just fmt-check
+elif command -v nix >/dev/null 2>&1; then
+    nix develop --command just fmt-check
+else
+    echo "⚠️ Ni cargo/markdownlint-cli2 ni nix n'ont été trouvés dans le PATH." >&2
+    exit 1
+fi

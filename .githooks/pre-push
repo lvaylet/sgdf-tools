@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "🚀 [pre-push] Vérification de la suite qualité complète (format, lint, tests)..."
+
+if command -v cargo >/dev/null 2>&1 && command -v markdownlint-cli2 >/dev/null 2>&1; then
+    just verify
+elif command -v nix >/dev/null 2>&1; then
+    nix develop --command just verify
+else
+    echo "⚠️ Ni cargo/markdownlint-cli2 ni nix n'ont été trouvés dans le PATH." >&2
+    exit 1
+fi

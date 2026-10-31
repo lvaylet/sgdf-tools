@@ -1,0 +1,17 @@
+# Declarative markdownlint-cli2 configuration for sgdf-tools
+globs:
+  - "**/*.md"
+
+ignores:
+  - ".agents/**"
+  - "AGENTS.md"
+  - ".direnv/**"
+
+config:
+  default: true
+  MD013: false
+  MD024:
+    siblings_only: true
+  MD033: false
+  MD051: false
+  MD060: false

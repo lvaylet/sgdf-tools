@@ -44,19 +44,20 @@ Suite d'outils écrite en Rust pour faciliter la gestion administrative et opér
 ## 🏛 Architecture
 
 Le système s'appuie sur une séparation stricte des responsabilités (voir [ADR-0001](docs/adr/0001-separation-of-concerns-sgdf-tools-and-n8n.md)) :
+
 - **`sgdf-tools`** est le cœur métier et la source de vérité locale (stockage SQLite, déduplication, calculs d'écarts).
 - **`n8n`** gère l'orchestration des flux tiers et l'authentification externe (OAuth2 Google Contacts, requêtes vers la passerelle WAHA).
 
-```
+```text
                            +----------------------------------------+
                            |   Intranet SGDF (ExportIndividus.xls)   |
                            +----------------------------------------+
                                               |
                                               v (Upload / Import)
-+------------------+         +----------------------------------------+
-|     sgdf-cli     |  HTTP   |                sgdf-api                |
-| (Clap, table/json|<------->|       (Axum, Bearer Token Auth)        |
-+------------------+         +----------------------------------------+
++--------------------+       +----------------------------------------+
+|     sgdf-cli       | HTTP  |                sgdf-api                |
+| (Clap, table/json) |<----->|       (Axum, Bearer Token Auth)        |
++--------------------+       +----------------------------------------+
                                |                  |
                                | (sgdf-core)      v
                                |          +-----------------+
@@ -106,20 +107,26 @@ Le projet utilise un [Nix Flake](https://nixos.wiki/wiki/Flakes) couplé à [dir
 
 1. **Activation automatique avec direnv** :
    Le fichier `.envrc` est configuré avec `use flake`. Dès que vous entrez dans le répertoire, votre shell charge automatiquement tous les outils (`rustc`, `cargo`, `clippy`, `rustfmt`, `rust-analyzer`, `sqlx-cli`, `sqlite`, `just`, etc.) :
+
    ```bash
    direnv allow
    ```
+
    *(Ou manuellement sans direnv via `nix develop`).*
 
 2. **Commandes SDLC avec `just`** :
    Un `justfile` regroupe les opérations les plus courantes :
+
    ```bash
    just                # Affiche l'aide et la liste des recettes disponibles
    just build          # Compile l'ensemble du workspace
    just test           # Lance tous les tests unitaires et d'intégration
    just lint           # Lance clippy avec arrêt sur warning (-D warnings)
-   just fmt            # Formate automatiquement le code avec rustfmt
-   just fmt-check      # Vérifie le formatage sans modifier les fichiers
+   just lint-md        # Vérifie la conformité Markdown sans modifier les fichiers
+   just fmt            # Formate l'ensemble du projet (Rust + Markdown)
+   just fmt-md         # Formate uniquement les fichiers Markdown avec markdownlint-cli2
+   just fmt-check      # Vérifie le formatage sans modifier les fichiers (Rust + Markdown)
+   just setup-hooks    # Active les hooks Git locaux (.githooks/) pour pre-commit et pre-push
    just verify         # Exécute la chaîne qualité complète (fmt-check + lint + test)
    just run-api        # Démarre l'API locale avec SQLite
    just cli status     # Exécute la CLI (ex. just cli units list)
@@ -129,12 +136,14 @@ Le projet utilise un [Nix Flake](https://nixos.wiki/wiki/Flakes) couplé à [dir
 ### Sans Nix
 
 Assurez-vous de disposer d'une toolchain Rust récente (>= 1.80) ainsi que des bibliothèques système nécessaires :
+
 - `pkg-config`
 - `openssl` (headers de développement)
 - `sqlite3`
 - `just` (optionnel)
 
 Puis :
+
 ```bash
 cargo build
 cargo test
@@ -161,11 +170,13 @@ Les outils se configurent via des variables d'environnement :
 ### Serveur API (`sgdf-api`)
 
 Démarrage du serveur :
+
 ```bash
 cargo run -p sgdf-api
 ```
 
 Vérification de l'état de santé :
+
 ```bash
 curl http://127.0.0.1:3000/health
 # Réponse : OK

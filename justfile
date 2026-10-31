@@ -18,13 +18,30 @@ check:
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Formate le code source avec rustfmt
-fmt:
+# Vérifie les règles Markdown sans modifier les fichiers
+lint-md:
+    markdownlint-cli2
+
+# Formate le code source Rust avec rustfmt
+fmt-rs:
     cargo fmt --all
 
-# Vérifie le formatage sans modifier les fichiers
+# Formate les fichiers Markdown avec markdownlint-cli2
+fmt-md:
+    markdownlint-cli2 --fix
+
+# Formate l'ensemble du projet (Rust et Markdown)
+fmt: fmt-rs fmt-md
+
+# Vérifie le formatage sans modifier les fichiers (Rust et Markdown)
 fmt-check:
     cargo fmt --all -- --check
+    markdownlint-cli2
+
+# Active les hooks Git locaux (.githooks/) pour vérifier la conformité avant commit et push
+setup-hooks:
+    git config core.hooksPath .githooks
+    chmod +x .githooks/*
 
 # Exécute l'ensemble des vérifications qualité (formatage, lint, tests)
 verify: fmt-check lint test
