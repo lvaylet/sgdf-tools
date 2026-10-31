@@ -1,11 +1,12 @@
 use axum::{
-    extract::{Multipart, State},
+    extract::{Multipart, Path, State},
     http::StatusCode,
     response::{IntoResponse, Json},
-    routing::{get, post},
+    routing::{get, patch, post},
     Router,
 };
 use serde_json::json;
+use sgdf_core::domain::UpdateUnitPayload;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
@@ -22,6 +23,9 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/api/v1/imports", post(import_gestact_file))
+        .route("/api/v1/units", get(list_units))
+        .route("/api/v1/units/{id}", patch(update_unit))
+        .route("/api/v1/units/{id}/members", get(get_unit_members))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -70,4 +74,66 @@ async fn import_gestact_file(
         })?;
 
     Ok((StatusCode::OK, Json(summary)))
+}
+
+async fn list_units(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let units = sgdf_core::store::get_units(&state.pool).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+        )
+    })?;
+
+    Ok((StatusCode::OK, Json(units)))
+}
+
+async fn update_unit(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<UpdateUnitPayload>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let updated = sgdf_core::store::update_unit_jid(
+        &state.pool,
+        id,
+        payload.whatsapp_group_jid.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+        )
+    })?;
+
+    match updated {
+        Some(unit) => Ok((StatusCode::OK, Json(unit))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Unité avec l'id {} introuvable", id) })),
+        )),
+    }
+}
+
+async fn get_unit_members(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let details = sgdf_core::store::get_unit_members(&state.pool, id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+            )
+        })?;
+
+    match details {
+        Some(resp) => Ok((StatusCode::OK, Json(resp))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Unité avec l'id {} introuvable", id) })),
+        )),
+    }
 }

@@ -39,6 +39,49 @@ pub struct Unite {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnitSummary {
+    pub id: i64,
+    pub code_structure: String,
+    pub nom: String,
+    pub whatsapp_group_jid: Option<String>,
+    pub members_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepresentantLegalSummary {
+    pub id: i64,
+    pub nom: String,
+    pub prenom: String,
+    pub telephone_mobile: Option<String>,
+    pub courriel: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberDetails {
+    pub id: i64,
+    pub nom: String,
+    pub prenom: String,
+    pub code_adherent: Option<String>,
+    pub fonction: Option<String>,
+    pub date_naissance: Option<NaiveDate>,
+    pub telephone_mobile: Option<String>,
+    pub courriel: Option<String>,
+    pub representants_legaux: Vec<RepresentantLegalSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnitMembersResponse {
+    pub unit: Unite,
+    pub saison: String,
+    pub members: Vec<MemberDetails>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateUnitPayload {
+    pub whatsapp_group_jid: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Saison {
     pub id: Option<i64>,
     pub libelle: String,

@@ -1,4 +1,7 @@
-use crate::domain::{ImportSummary, ParsedRow};
+use crate::domain::{
+    ImportSummary, MemberDetails, ParsedRow, RepresentantLegalSummary, UnitMembersResponse,
+    UnitSummary, Unite,
+};
 use chrono::{Datelike, NaiveDate};
 use sqlx::{Row, SqlitePool};
 
@@ -267,7 +270,6 @@ async fn upsert_individu(
         .collect();
 
     if !candidates.is_empty() {
-        // Déduplication basée sur la clé composite (nom + prénom + concordance contact)
         let matched = candidates.iter().find(|cand| {
             let phone_matches = input.telephone_mobile.is_some()
                 && input.telephone_mobile == cand.telephone_mobile.as_deref();
@@ -353,4 +355,161 @@ async fn upsert_individu(
     .get("id");
 
     Ok(new_id)
+}
+
+pub async fn get_units(pool: &SqlitePool) -> Result<Vec<UnitSummary>, sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT u.id, u.code_structure, u.nom, u.whatsapp_group_jid,
+                COUNT(i.id) as members_count
+         FROM unites u
+         LEFT JOIN inscriptions i ON i.unite_id = u.id AND i.active = 1
+         LEFT JOIN saisons s ON s.id = i.saison_id AND s.active = 1
+         GROUP BY u.id
+         ORDER BY u.nom",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let units = rows
+        .into_iter()
+        .map(|r| UnitSummary {
+            id: r.get("id"),
+            code_structure: r.get("code_structure"),
+            nom: r.get("nom"),
+            whatsapp_group_jid: r.get("whatsapp_group_jid"),
+            members_count: r.get("members_count"),
+        })
+        .collect();
+
+    Ok(units)
+}
+
+pub async fn update_unit_jid(
+    pool: &SqlitePool,
+    unit_id: i64,
+    jid: Option<&str>,
+) -> Result<Option<Unite>, sqlx::Error> {
+    let row = sqlx::query(
+        "UPDATE unites
+         SET whatsapp_group_jid = ?
+         WHERE id = ?
+         RETURNING id, code_structure, nom, whatsapp_group_jid",
+    )
+    .bind(jid)
+    .bind(unit_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let unit = row.map(|r| Unite {
+        id: Some(r.get("id")),
+        code_structure: r.get("code_structure"),
+        nom: r.get("nom"),
+        whatsapp_group_jid: r.get("whatsapp_group_jid"),
+    });
+
+    Ok(unit)
+}
+
+pub async fn get_unit_members(
+    pool: &SqlitePool,
+    unit_id: i64,
+) -> Result<Option<UnitMembersResponse>, sqlx::Error> {
+    let unit_row = sqlx::query(
+        "SELECT id, code_structure, nom, whatsapp_group_jid
+         FROM unites
+         WHERE id = ?",
+    )
+    .bind(unit_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let unit = match unit_row {
+        Some(r) => Unite {
+            id: Some(r.get("id")),
+            code_structure: r.get("code_structure"),
+            nom: r.get("nom"),
+            whatsapp_group_jid: r.get("whatsapp_group_jid"),
+        },
+        None => return Ok(None),
+    };
+
+    let saison_row = sqlx::query(
+        "SELECT id, libelle FROM saisons WHERE active = 1 ORDER BY date_debut DESC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    let (saison_id, saison_libelle) = match saison_row {
+        Some(r) => (r.get::<i64, _>("id"), r.get::<String, _>("libelle")),
+        None => {
+            return Ok(Some(UnitMembersResponse {
+                unit,
+                saison: "N/A".to_string(),
+                members: vec![],
+            }))
+        }
+    };
+
+    let member_rows = sqlx::query(
+        "SELECT ind.id, ind.nom, ind.prenom, ind.code_adherent,
+                insc.fonction_libelle, ind.date_naissance,
+                ind.telephone_mobile, ind.courriel_personnel
+         FROM inscriptions insc
+         JOIN individus ind ON ind.id = insc.individu_id
+         WHERE insc.unite_id = ? AND insc.saison_id = ? AND insc.active = 1
+         ORDER BY ind.nom, ind.prenom",
+    )
+    .bind(unit_id)
+    .bind(saison_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut members = Vec::new();
+
+    for m in member_rows {
+        let member_id: i64 = m.get("id");
+        let dn_str: Option<String> = m.get("date_naissance");
+        let date_naissance = dn_str.and_then(|s| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
+
+        let rep_rows = sqlx::query(
+            "SELECT p.id, p.nom, p.prenom, p.telephone_mobile, p.courriel_personnel
+             FROM liens_parente lp
+             JOIN individus p ON p.id = lp.parent_id
+             WHERE lp.jeune_id = ? AND lp.saison_id = ?
+             ORDER BY lp.ordre",
+        )
+        .bind(member_id)
+        .bind(saison_id)
+        .fetch_all(pool)
+        .await?;
+
+        let representants_legaux = rep_rows
+            .into_iter()
+            .map(|r| RepresentantLegalSummary {
+                id: r.get("id"),
+                nom: r.get("nom"),
+                prenom: r.get("prenom"),
+                telephone_mobile: r.get("telephone_mobile"),
+                courriel: r.get("courriel_personnel"),
+            })
+            .collect();
+
+        members.push(MemberDetails {
+            id: member_id,
+            nom: m.get("nom"),
+            prenom: m.get("prenom"),
+            code_adherent: m.get("code_adherent"),
+            fonction: m.get("fonction_libelle"),
+            date_naissance,
+            telephone_mobile: m.get("telephone_mobile"),
+            courriel: m.get("courriel_personnel"),
+            representants_legaux,
+        });
+    }
+
+    Ok(Some(UnitMembersResponse {
+        unit,
+        saison: saison_libelle,
+        members,
+    }))
 }

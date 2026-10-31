@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use comfy_table::{presets::UTF8_FULL, Table};
 use reqwest::multipart::{Form, Part};
-use sgdf_core::domain::ImportSummary;
+use sgdf_core::domain::{ImportSummary, UnitMembersResponse, UnitSummary, Unite};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -31,19 +31,50 @@ enum Commands {
         /// Chemin du fichier à importer
         file: PathBuf,
     },
+
+    /// Gestion des unités scoutes et de leurs membres
+    Units {
+        #[command(subcommand)]
+        command: UnitsCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum UnitsCommands {
+    /// Liste les unités du groupe avec leurs effectifs et JID WhatsApp
+    List,
+
+    /// Affiche les membres et représentants légaux d'une unité
+    Show {
+        /// Identifiant unique de l'unité
+        id: i64,
+    },
+
+    /// Associe un identifiant de groupe WhatsApp (JID) à une unité
+    SetJid {
+        /// Identifiant de l'unité
+        id: i64,
+        /// JID du groupe WhatsApp (ex: 120363xxx@g.us)
+        jid: String,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    let client = reqwest::Client::new();
+
+    let send_req = |req: reqwest::RequestBuilder| {
+        if let Some(token) = &cli.token {
+            req.bearer_auth(token)
+        } else {
+            req
+        }
+    };
 
     match &cli.command {
         Commands::Status => {
-            let client = reqwest::Client::new();
-            let mut req = client.get(format!("{}/health", cli.api_url));
-            if let Some(token) = &cli.token {
-                req = req.bearer_auth(token);
-            }
+            let req = send_req(client.get(format!("{}/health", cli.api_url)));
             let res = req.send().await?;
 
             if res.status().is_success() {
@@ -77,12 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .mime_str("application/vnd.ms-excel")?,
             );
 
-            let client = reqwest::Client::new();
-            let mut req = client.post(format!("{}/api/v1/imports", cli.api_url)).multipart(form);
-            if let Some(token) = &cli.token {
-                req = req.bearer_auth(token);
-            }
-
+            let req = send_req(client.post(format!("{}/api/v1/imports", cli.api_url)).multipart(form));
             let res = req.send().await?;
             if !res.status().is_success() {
                 let err_text = res.text().await?;
@@ -98,13 +124,132 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut table = Table::new();
                 table.load_preset(UTF8_FULL);
                 table.set_header(vec!["Métrique", "Quantité"]);
-                table.add_row(vec!["Individus (adhérents & représentants légaux)", &summary.individus_importes.to_string()]);
+                table.add_row(vec![
+                    "Individus (adhérents & représentants légaux)",
+                    &summary.individus_importes.to_string(),
+                ]);
                 table.add_row(vec!["Unités pédagogiques", &summary.unites_importees.to_string()]);
                 table.add_row(vec!["Inscriptions saison", &summary.inscriptions_importees.to_string()]);
-                table.add_row(vec!["Liens de parenté enregistrés", &summary.liens_parente_importes.to_string()]);
+                table.add_row(vec![
+                    "Liens de parenté enregistrés",
+                    &summary.liens_parente_importes.to_string(),
+                ]);
                 println!("{}", table);
             }
         }
+        Commands::Units { command } => match command {
+            UnitsCommands::List => {
+                let req = send_req(client.get(format!("{}/api/v1/units", cli.api_url)));
+                let res = req.send().await?;
+                if !res.status().is_success() {
+                    eprintln!("Erreur lors de la récupération des unités : {}", res.status());
+                    std::process::exit(1);
+                }
+
+                let units: Vec<UnitSummary> = res.json().await?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&units)?);
+                } else {
+                    let mut table = Table::new();
+                    table.load_preset(UTF8_FULL);
+                    table.set_header(vec!["ID", "Code Structure", "Nom de l'Unité", "Effectif", "JID WhatsApp"]);
+                    for u in units {
+                        table.add_row(vec![
+                            u.id.to_string(),
+                            u.code_structure,
+                            u.nom,
+                            u.members_count.to_string(),
+                            u.whatsapp_group_jid.unwrap_or_else(|| "-".to_string()),
+                        ]);
+                    }
+                    println!("{}", table);
+                }
+            }
+            UnitsCommands::Show { id } => {
+                let req = send_req(client.get(format!("{}/api/v1/units/{}/members", cli.api_url, id)));
+                let res = req.send().await?;
+                if !res.status().is_success() {
+                    eprintln!("Unité introuvable ou erreur : {}", res.status());
+                    std::process::exit(1);
+                }
+
+                let details: UnitMembersResponse = res.json().await?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&details)?);
+                } else {
+                    println!("=== {} (Saison {}) ===", details.unit.nom, details.saison);
+                    println!(
+                        "JID WhatsApp : {}",
+                        details.unit.whatsapp_group_jid.as_deref().unwrap_or("Non configuré")
+                    );
+                    println!();
+
+                    let mut table = Table::new();
+                    table.load_preset(UTF8_FULL);
+                    table.set_header(vec![
+                        "Nom & Prénom",
+                        "Fonction",
+                        "Code Adhérent",
+                        "Téléphone",
+                        "Représentants Légaux",
+                    ]);
+
+                    for m in details.members {
+                        let reps_str = if m.representants_legaux.is_empty() {
+                            "-".to_string()
+                        } else {
+                            m.representants_legaux
+                                .iter()
+                                .map(|r| {
+                                    format!(
+                                        "{} {} ({})",
+                                        r.prenom,
+                                        r.nom,
+                                        r.telephone_mobile.as_deref().unwrap_or("aucun tél")
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        };
+
+                        table.add_row(vec![
+                            format!("{} {}", m.nom, m.prenom),
+                            m.fonction.unwrap_or_default(),
+                            m.code_adherent.unwrap_or_default(),
+                            m.telephone_mobile.unwrap_or_default(),
+                            reps_str,
+                        ]);
+                    }
+                    println!("{}", table);
+                }
+            }
+            UnitsCommands::SetJid { id, jid } => {
+                let payload = serde_json::json!({ "whatsapp_group_jid": jid });
+                let req = send_req(
+                    client
+                        .patch(format!("{}/api/v1/units/{}", cli.api_url, id))
+                        .json(&payload),
+                );
+                let res = req.send().await?;
+                if !res.status().is_success() {
+                    eprintln!("Échec de la mise à jour du JID : {}", res.status());
+                    std::process::exit(1);
+                }
+
+                let updated: Unite = res.json().await?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&updated)?);
+                } else {
+                    println!(
+                        "JID WhatsApp configuré pour l'unité '{}' : {}",
+                        updated.nom,
+                        updated.whatsapp_group_jid.as_deref().unwrap_or("-")
+                    );
+                }
+            }
+        },
     }
 
     Ok(())
