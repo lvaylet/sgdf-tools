@@ -3,6 +3,7 @@ use comfy_table::{presets::UTF8_FULL, Table};
 use reqwest::multipart::{Form, Part};
 use sgdf_core::domain::{
     GoogleContactEntry, ImportSummary, UnitAdherentsResponse, UnitSummary, Unite,
+    WhatsappAuditRequest, WhatsappAuditResponse,
 };
 use std::path::PathBuf;
 
@@ -45,6 +46,12 @@ enum Commands {
         #[command(subcommand)]
         command: ExportCommands,
     },
+
+    /// Audit différentiel des membres de groupes WhatsApp
+    Audit {
+        #[command(subcommand)]
+        command: AuditCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -71,6 +78,19 @@ enum UnitsCommands {
 enum ExportCommands {
     /// Exporte les fiches contacts consolidées pour Google Contacts
     GoogleContacts,
+}
+
+#[derive(Subcommand)]
+enum AuditCommands {
+    /// Compare les participants d'un groupe WhatsApp avec les membres attendus de l'unité
+    Whatsapp {
+        /// Identifiant de l'unité
+        unit_id: i64,
+
+        /// Liste de numéros séparés par des virgules ou chemin vers un fichier (texte ou JSON)
+        #[arg(long)]
+        participants: String,
+    },
 }
 
 #[tokio::main]
@@ -330,6 +350,112 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ]);
                     }
                     println!("{}", table);
+                }
+            }
+        },
+        Commands::Audit { command } => match command {
+            AuditCommands::Whatsapp {
+                unit_id,
+                participants,
+            } => {
+                let content = if std::path::Path::new(&participants).exists() {
+                    tokio::fs::read_to_string(&participants).await?
+                } else {
+                    participants.clone()
+                };
+
+                let participant_list: Vec<String> = if content.trim().starts_with('[') {
+                    match serde_json::from_str::<Vec<String>>(&content) {
+                        Ok(list) => list,
+                        Err(_) => content
+                            .split([',', '\n', '\r', ';'])
+                            .map(|s| s.trim().trim_matches('"').trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect(),
+                    }
+                } else {
+                    content
+                        .split([',', '\n', '\r', ';'])
+                        .map(|s| s.trim().trim_matches('"').trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                };
+
+                let audit_payload = WhatsappAuditRequest {
+                    participants: participant_list,
+                };
+
+                let req = send_req(
+                    client
+                        .post(format!(
+                            "{}/api/v1/units/{}/whatsapp-audit",
+                            cli.api_url, unit_id
+                        ))
+                        .json(&audit_payload),
+                );
+                let res = req.send().await?;
+                if !res.status().is_success() {
+                    eprintln!("Erreur lors de l'audit WhatsApp : {}", res.status());
+                    std::process::exit(1);
+                }
+
+                let audit_res: WhatsappAuditResponse = res.json().await?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&audit_res)?);
+                } else {
+                    println!("=== Audit WhatsApp pour l'unité ID {} ===", unit_id);
+                    println!(
+                        "Participants analysés : {} | Manquants : {} | Inconnus / Obsolètes : {}",
+                        audit_payload.participants.len(),
+                        audit_res.missing.len(),
+                        audit_res.unknown.len()
+                    );
+                    println!();
+
+                    println!("--- Contacts manquants ({}) ---", audit_res.missing.len());
+                    if audit_res.missing.is_empty() {
+                        println!("Aucun contact manquant. Tous les membres attendus sont dans le groupe !");
+                    } else {
+                        let mut table = Table::new();
+                        table.load_preset(UTF8_FULL);
+                        table.set_header(vec!["Nom & Prénom", "Téléphone(s)", "Jeune(s)"]);
+                        for m in audit_res.missing {
+                            let tels = if m.telephones.is_empty() {
+                                "-".to_string()
+                            } else {
+                                m.telephones.join(", ")
+                            };
+                            let jeunes_str = if m.jeunes.is_empty() {
+                                "-".to_string()
+                            } else {
+                                m.jeunes.join(", ")
+                            };
+                            table.add_row(vec![
+                                format!("{} {}", m.nom, m.prenom),
+                                tels,
+                                jeunes_str,
+                            ]);
+                        }
+                        println!("{}", table);
+                    }
+                    println!();
+
+                    println!(
+                        "--- Participants inconnus ou obsolètes ({}) ---",
+                        audit_res.unknown.len()
+                    );
+                    if audit_res.unknown.is_empty() {
+                        println!("Aucun participant inconnu détecté.");
+                    } else {
+                        let mut table = Table::new();
+                        table.load_preset(UTF8_FULL);
+                        table.set_header(vec!["Numéro"]);
+                        for u in audit_res.unknown {
+                            table.add_row(vec![u]);
+                        }
+                        println!("{}", table);
+                    }
                 }
             }
         },

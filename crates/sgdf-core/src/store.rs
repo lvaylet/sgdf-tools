@@ -1,6 +1,6 @@
 use crate::domain::{
     AdherentDetails, GoogleContactEntry, ImportSummary, ParsedRow, RepresentantLegalSummary,
-    UnitAdherentsResponse, UnitSummary, Unite,
+    UnitAdherentsResponse, UnitSummary, Unite, WhatsappAuditMissing, WhatsappAuditResponse,
 };
 use chrono::{Datelike, NaiveDate};
 use sqlx::{Row, SqlitePool};
@@ -703,4 +703,224 @@ pub async fn get_google_contacts_export(
     contacts.sort_by(|a, b| a.nom.cmp(&b.nom).then_with(|| a.prenom.cmp(&b.prenom)));
 
     Ok(contacts)
+}
+
+pub async fn audit_unit_whatsapp(
+    pool: &SqlitePool,
+    unit_id: i64,
+    raw_participants: &[String],
+) -> Result<Option<WhatsappAuditResponse>, sqlx::Error> {
+    // 1. Vérifier si l'unité existe
+    let unit_exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM unites WHERE id = ?")
+        .bind(unit_id)
+        .fetch_optional(pool)
+        .await?;
+
+    if unit_exists.is_none() {
+        return Ok(None);
+    }
+
+    // 2. Trouver la saison active
+    let saison_row =
+        sqlx::query("SELECT id FROM saisons WHERE active = 1 ORDER BY date_debut DESC LIMIT 1")
+            .fetch_optional(pool)
+            .await?;
+
+    let saison_id: i64 = match saison_row {
+        Some(r) => r.get("id"),
+        None => {
+            return Ok(Some(WhatsappAuditResponse {
+                missing: vec![],
+                unknown: vec![],
+            }))
+        }
+    };
+
+    // 3. Normaliser les participants reçus
+    let mut normalized_participants = Vec::new();
+    let mut participants_set = BTreeSet::new();
+
+    for raw in raw_participants {
+        let norm = match crate::phone::normalize_phone(raw) {
+            Some(n) => n,
+            None => {
+                let cleaned = if let Some((before_at, _)) = raw.split_once('@') {
+                    before_at.trim()
+                } else {
+                    raw.trim()
+                };
+                cleaned.to_string()
+            }
+        };
+
+        if !norm.is_empty() {
+            participants_set.insert(norm.clone());
+            if !normalized_participants.contains(&norm) {
+                normalized_participants.push(norm);
+            }
+        }
+    }
+
+    // 4. Collecter les téléphones de tous les adhérents inscrits dans l'unité (jeunes, chefs, cadres)
+    let member_rows = sqlx::query(
+        "SELECT ind.id, ind.nom, ind.prenom, ind.telephone_mobile, ind.telephone_domicile
+         FROM inscriptions insc
+         JOIN individus ind ON ind.id = insc.individu_id
+         WHERE insc.unite_id = ? AND insc.saison_id = ? AND insc.active = 1",
+    )
+    .bind(unit_id)
+    .bind(saison_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut all_known_phones = BTreeSet::new();
+
+    for r in &member_rows {
+        let mob: Option<String> = r.get("telephone_mobile");
+        let dom: Option<String> = r.get("telephone_domicile");
+        if let Some(m) = mob {
+            all_known_phones.insert(m);
+        }
+        if let Some(d) = dom {
+            all_known_phones.insert(d);
+        }
+    }
+
+    // 5. Déterminer si l'unité est une unité de jeunes mineurs (Farfadets, Louveteaux, Scouts, Pionniers)
+    let youth_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM inscriptions
+         WHERE unite_id = ? AND saison_id = ? AND active = 1
+           AND fonction_code IN ('110', '111', '120', '121', '130', '131', '170')",
+    )
+    .bind(unit_id)
+    .bind(saison_id)
+    .fetch_one(pool)
+    .await?;
+
+    let is_youth_unit = youth_count > 0;
+
+    struct ExpectedContact {
+        nom: String,
+        prenom: String,
+        mobile: Option<String>,
+        domicile: Option<String>,
+        jeunes: BTreeSet<String>,
+    }
+
+    let mut expected_map: HashMap<i64, ExpectedContact> = HashMap::new();
+
+    if is_youth_unit {
+        // Unité de jeunes : les contacts attendus sont les représentants légaux des jeunes inscrits
+        let rep_rows = sqlx::query(
+            "SELECT p.id as rep_id, p.nom as rep_nom, p.prenom as rep_prenom,
+                    p.telephone_mobile as rep_mobile, p.telephone_domicile as rep_domicile,
+                    j.nom as jeune_nom, j.prenom as jeune_prenom
+             FROM liens_parente lp
+             JOIN individus p ON p.id = lp.parent_id
+             JOIN individus j ON j.id = lp.jeune_id
+             JOIN inscriptions insc ON insc.individu_id = j.id AND insc.saison_id = lp.saison_id AND insc.active = 1
+             WHERE insc.unite_id = ? AND lp.saison_id = ?
+               AND insc.fonction_code IN ('110', '111', '120', '121', '130', '131', '170')
+             ORDER BY p.nom, p.prenom, j.prenom",
+        )
+        .bind(unit_id)
+        .bind(saison_id)
+        .fetch_all(pool)
+        .await?;
+
+        for r in rep_rows {
+            let rep_id: i64 = r.get("rep_id");
+            let rep_nom: String = r.get("rep_nom");
+            let rep_prenom: String = r.get("rep_prenom");
+            let rep_mobile: Option<String> = r.get("rep_mobile");
+            let rep_domicile: Option<String> = r.get("rep_domicile");
+            let jeune_nom: String = r.get("jeune_nom");
+            let jeune_prenom: String = r.get("jeune_prenom");
+
+            if let Some(m) = &rep_mobile {
+                all_known_phones.insert(m.clone());
+            }
+            if let Some(d) = &rep_domicile {
+                all_known_phones.insert(d.clone());
+            }
+
+            let entry = expected_map
+                .entry(rep_id)
+                .or_insert_with(|| ExpectedContact {
+                    nom: rep_nom,
+                    prenom: rep_prenom,
+                    mobile: rep_mobile,
+                    domicile: rep_domicile,
+                    jeunes: BTreeSet::new(),
+                });
+
+            entry
+                .jeunes
+                .insert(format!("{} {}", jeune_prenom, jeune_nom));
+        }
+    } else {
+        // Unité adulte / compagnons : les contacts attendus sont les adhérents eux-mêmes
+        for r in &member_rows {
+            let ind_id: i64 = r.get("id");
+            let nom: String = r.get("nom");
+            let prenom: String = r.get("prenom");
+            let mobile: Option<String> = r.get("telephone_mobile");
+            let domicile: Option<String> = r.get("telephone_domicile");
+
+            expected_map.insert(
+                ind_id,
+                ExpectedContact {
+                    nom,
+                    prenom,
+                    mobile,
+                    domicile,
+                    jeunes: BTreeSet::new(),
+                },
+            );
+        }
+    }
+
+    // 6. Calcul différentiel des manquants
+    let mut missing = Vec::new();
+
+    for (_, contact) in expected_map {
+        let is_present = match (&contact.mobile, &contact.domicile) {
+            (Some(m), Some(d)) => participants_set.contains(m) || participants_set.contains(d),
+            (Some(m), None) => participants_set.contains(m),
+            (None, Some(d)) => participants_set.contains(d),
+            (None, None) => false,
+        };
+
+        if !is_present {
+            let mut telephones = Vec::new();
+            if let Some(m) = &contact.mobile {
+                telephones.push(m.clone());
+            }
+            if let Some(d) = &contact.domicile {
+                telephones.push(d.clone());
+            }
+
+            missing.push(WhatsappAuditMissing {
+                nom: contact.nom,
+                prenom: contact.prenom,
+                telephones,
+                telephone_mobile: contact.mobile,
+                telephone_domicile: contact.domicile,
+                jeunes: contact.jeunes.into_iter().collect(),
+            });
+        }
+    }
+
+    missing.sort_by(|a, b| a.nom.cmp(&b.nom).then_with(|| a.prenom.cmp(&b.prenom)));
+
+    // 7. Calcul différentiel des participants inconnus
+    let mut unknown = Vec::new();
+    for p in normalized_participants {
+        if !all_known_phones.contains(&p) && !unknown.contains(&p) {
+            unknown.push(p);
+        }
+    }
+    unknown.sort();
+
+    Ok(Some(WhatsappAuditResponse { missing, unknown }))
 }

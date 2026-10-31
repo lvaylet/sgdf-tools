@@ -39,6 +39,29 @@ pub struct Unite {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WhatsappAuditRequest {
+    pub participants: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WhatsappAuditMissing {
+    pub nom: String,
+    pub prenom: String,
+    pub telephones: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub telephone_mobile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub telephone_domicile: Option<String>,
+    pub jeunes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WhatsappAuditResponse {
+    pub missing: Vec<WhatsappAuditMissing>,
+    pub unknown: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoogleContactEntry {
     pub nom: String,
     pub prenom: String,

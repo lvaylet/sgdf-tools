@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use serde_json::json;
-use sgdf_core::domain::UpdateUnitPayload;
+use sgdf_core::domain::{UpdateUnitPayload, WhatsappAuditRequest};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
@@ -29,6 +29,10 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
         .route(
             "/api/v1/exports/google-contacts",
             get(export_google_contacts),
+        )
+        .route(
+            "/api/v1/units/{id}/whatsapp-audit",
+            post(audit_unit_whatsapp_handler),
         )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -154,4 +158,27 @@ async fn export_google_contacts(
         })?;
 
     Ok((StatusCode::OK, Json(contacts)))
+}
+
+async fn audit_unit_whatsapp_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<WhatsappAuditRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let result = sgdf_core::store::audit_unit_whatsapp(&state.pool, id, &payload.participants)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+            )
+        })?;
+
+    match result {
+        Some(resp) => Ok((StatusCode::OK, Json(resp))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Unité avec l'id {} introuvable", id) })),
+        )),
+    }
 }
