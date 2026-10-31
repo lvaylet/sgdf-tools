@@ -107,6 +107,16 @@ fn parse_participants_input(raw: &str) -> Vec<String> {
         .collect()
 }
 
+fn check_auth_error(res: &reqwest::Response) {
+    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        eprintln!(
+            "Erreur d'authentification (401 Unauthorized) : Token Bearer manquant ou invalide.\n\
+             Veuillez fournir un jeton valide via l'option --token ou la variable d'environnement SGDF_AUTH_TOKEN."
+        );
+        std::process::exit(1);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -139,6 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
             } else {
+                check_auth_error(&res);
                 eprintln!("Erreur lors de l'appel API : {}", res.status());
                 std::process::exit(1);
             }
@@ -170,6 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             let res = req.send().await?;
             if !res.status().is_success() {
+                check_auth_error(&res);
                 let err_text = res.text().await?;
                 eprintln!("Échec de l'import : {}", err_text);
                 std::process::exit(1);
@@ -207,6 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let req = send_req(client.get(format!("{}/api/v1/units", cli.api_url)));
                 let res = req.send().await?;
                 if !res.status().is_success() {
+                    check_auth_error(&res);
                     eprintln!(
                         "Erreur lors de la récupération des unités : {}",
                         res.status()
@@ -245,6 +258,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     send_req(client.get(format!("{}/api/v1/units/{}/members", cli.api_url, id)));
                 let res = req.send().await?;
                 if !res.status().is_success() {
+                    check_auth_error(&res);
                     eprintln!("Unité introuvable ou erreur : {}", res.status());
                     std::process::exit(1);
                 }
@@ -313,6 +327,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 let res = req.send().await?;
                 if !res.status().is_success() {
+                    check_auth_error(&res);
                     eprintln!("Échec de la mise à jour du JID : {}", res.status());
                     std::process::exit(1);
                 }
@@ -335,6 +350,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     send_req(client.get(format!("{}/api/v1/exports/google-contacts", cli.api_url)));
                 let res = req.send().await?;
                 if !res.status().is_success() {
+                    check_auth_error(&res);
                     eprintln!("Erreur lors de l'export des contacts : {}", res.status());
                     std::process::exit(1);
                 }
@@ -394,6 +410,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 let res = req.send().await?;
                 if !res.status().is_success() {
+                    check_auth_error(&res);
                     eprintln!("Erreur lors de l'audit WhatsApp : {}", res.status());
                     std::process::exit(1);
                 }

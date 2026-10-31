@@ -20,22 +20,61 @@ pub struct AppState {
 pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
     let state = Arc::new(AppState { pool, auth_token });
 
-    Router::new()
-        .route("/health", get(health_check))
-        .route("/api/v1/imports", post(import_gestact_file))
-        .route("/api/v1/units", get(list_units))
-        .route("/api/v1/units/{id}", patch(update_unit))
-        .route("/api/v1/units/{id}/members", get(get_unit_members))
+    let api_routes = Router::new()
+        .route("/v1/imports", post(import_gestact_file))
+        .route("/v1/units", get(list_units))
+        .route("/v1/units/{id}", patch(update_unit))
+        .route("/v1/units/{id}/members", get(get_unit_members))
+        .route("/v1/exports/google-contacts", get(export_google_contacts))
         .route(
-            "/api/v1/exports/google-contacts",
-            get(export_google_contacts),
-        )
-        .route(
-            "/api/v1/units/{id}/whatsapp-audit",
+            "/v1/units/{id}/whatsapp-audit",
             post(audit_unit_whatsapp_handler),
         )
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
+
+    Router::new()
+        .route("/health", get(health_check))
+        .nest("/api", api_routes)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn auth_middleware(
+    State(state): State<Arc<AppState>>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, (StatusCode, Json<serde_json::Value>)> {
+    if let Some(expected_token) = &state.auth_token {
+        let auth_header = req
+            .headers()
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok());
+
+        let is_valid = match auth_header {
+            Some(header_val) => {
+                if let Some(token) = header_val.strip_prefix("Bearer ") {
+                    token.trim() == expected_token
+                } else {
+                    false
+                }
+            }
+            None => false,
+        };
+
+        if !is_valid {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": "Authentification requise : header Authorization Bearer invalide ou manquant"
+                })),
+            ));
+        }
+    }
+
+    Ok(next.run(req).await)
 }
 
 async fn health_check() -> &'static str {
