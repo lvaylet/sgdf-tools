@@ -107,14 +107,28 @@ fn parse_participants_input(raw: &str) -> Vec<String> {
         .collect()
 }
 
-fn check_auth_error(res: &reqwest::Response) {
-    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
-        eprintln!(
-            "Erreur d'authentification (401 Unauthorized) : Token Bearer manquant ou invalide.\n\
-             Veuillez fournir un jeton valide via l'option --token ou la variable d'environnement SGDF_AUTH_TOKEN."
-        );
+async fn handle_response(
+    res: reqwest::Response,
+    context: &str,
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    if !res.status().is_success() {
+        if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+            eprintln!(
+                "Erreur d'authentification (401 Unauthorized) : Token Bearer manquant ou invalide.\n\
+                 Veuillez fournir un jeton valide via l'option --token ou la variable d'environnement SGDF_AUTH_TOKEN."
+            );
+            std::process::exit(1);
+        }
+        let status = res.status();
+        let err = res.text().await.unwrap_or_default();
+        if !err.is_empty() {
+            eprintln!("Erreur lors de {} : {}", context, err);
+        } else {
+            eprintln!("Erreur lors de {} (statut HTTP {})", context, status);
+        }
         std::process::exit(1);
     }
+    Ok(res)
 }
 
 #[tokio::main]
@@ -133,25 +147,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Commands::Status => {
             let req = send_req(client.get(format!("{}/health", cli.api_url)));
-            let res = req.send().await?;
+            let res = handle_response(req.send().await?, "la vérification du statut").await?;
 
-            if res.status().is_success() {
-                if cli.json {
-                    println!(
-                        "{}",
-                        serde_json::json!({ "status": "ok", "url": cli.api_url })
-                    );
-                } else {
-                    println!(
-                        "API disponible sur {} (statut : {})",
-                        cli.api_url,
-                        res.status()
-                    );
-                }
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "ok", "url": cli.api_url })
+                );
             } else {
-                check_auth_error(&res);
-                eprintln!("Erreur lors de l'appel API : {}", res.status());
-                std::process::exit(1);
+                println!(
+                    "API disponible sur {} (statut : {})",
+                    cli.api_url,
+                    res.status()
+                );
             }
         }
         Commands::Import { file } => {
@@ -179,14 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .post(format!("{}/api/v1/imports", cli.api_url))
                     .multipart(form),
             );
-            let res = req.send().await?;
-            if !res.status().is_success() {
-                check_auth_error(&res);
-                let err_text = res.text().await?;
-                eprintln!("Échec de l'import : {}", err_text);
-                std::process::exit(1);
-            }
-
+            let res = handle_response(req.send().await?, "l'import du fichier").await?;
             let summary: ImportSummary = res.json().await?;
 
             if cli.json {
@@ -217,16 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Units { command } => match command {
             UnitsCommands::List => {
                 let req = send_req(client.get(format!("{}/api/v1/units", cli.api_url)));
-                let res = req.send().await?;
-                if !res.status().is_success() {
-                    check_auth_error(&res);
-                    eprintln!(
-                        "Erreur lors de la récupération des unités : {}",
-                        res.status()
-                    );
-                    std::process::exit(1);
-                }
-
+                let res = handle_response(req.send().await?, "la récupération des unités").await?;
                 let units: Vec<UnitSummary> = res.json().await?;
 
                 if cli.json {
@@ -256,13 +248,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             UnitsCommands::Show { id } => {
                 let req =
                     send_req(client.get(format!("{}/api/v1/units/{}/members", cli.api_url, id)));
-                let res = req.send().await?;
-                if !res.status().is_success() {
-                    check_auth_error(&res);
-                    eprintln!("Unité introuvable ou erreur : {}", res.status());
-                    std::process::exit(1);
-                }
-
+                let res = handle_response(req.send().await?, "la consultation de l'unité").await?;
                 let details: UnitAdherentsResponse = res.json().await?;
 
                 if cli.json {
@@ -325,13 +311,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .patch(format!("{}/api/v1/units/{}", cli.api_url, id))
                         .json(&payload),
                 );
-                let res = req.send().await?;
-                if !res.status().is_success() {
-                    check_auth_error(&res);
-                    eprintln!("Échec de la mise à jour du JID : {}", res.status());
-                    std::process::exit(1);
-                }
-
+                let res = handle_response(req.send().await?, "la mise à jour du JID").await?;
                 let updated: Unite = res.json().await?;
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&updated)?);
@@ -348,13 +328,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ExportCommands::GoogleContacts => {
                 let req =
                     send_req(client.get(format!("{}/api/v1/exports/google-contacts", cli.api_url)));
-                let res = req.send().await?;
-                if !res.status().is_success() {
-                    check_auth_error(&res);
-                    eprintln!("Erreur lors de l'export des contacts : {}", res.status());
-                    std::process::exit(1);
-                }
-
+                let res = handle_response(req.send().await?, "l'export des contacts").await?;
                 let contacts: Vec<GoogleContactEntry> = res.json().await?;
 
                 if cli.json {
@@ -408,13 +382,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ))
                         .json(&audit_payload),
                 );
-                let res = req.send().await?;
-                if !res.status().is_success() {
-                    check_auth_error(&res);
-                    eprintln!("Erreur lors de l'audit WhatsApp : {}", res.status());
-                    std::process::exit(1);
-                }
-
+                let res = handle_response(req.send().await?, "l'audit WhatsApp").await?;
                 let audit_res: WhatsappAuditResponse = res.json().await?;
 
                 if cli.json {

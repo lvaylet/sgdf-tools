@@ -42,12 +42,25 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
         .with_state(state)
 }
 
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    if a_bytes.len() != b_bytes.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a_bytes.iter().zip(b_bytes.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 async fn auth_middleware(
     State(state): State<Arc<AppState>>,
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Result<axum::response::Response, (StatusCode, Json<serde_json::Value>)> {
-    if let Some(expected_token) = &state.auth_token {
+    if let Some(expected_token) = state.auth_token.as_ref().filter(|t| !t.trim().is_empty()) {
         let auth_header = req
             .headers()
             .get(axum::http::header::AUTHORIZATION)
@@ -56,7 +69,7 @@ async fn auth_middleware(
         let is_valid = match auth_header {
             Some(header_val) => {
                 if let Some(token) = header_val.strip_prefix("Bearer ") {
-                    token.trim() == expected_token
+                    constant_time_eq(token.trim(), expected_token)
                 } else {
                     false
                 }
