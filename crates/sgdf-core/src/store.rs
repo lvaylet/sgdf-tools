@@ -1,9 +1,10 @@
 use crate::domain::{
-    AdherentDetails, ImportSummary, ParsedRow, RepresentantLegalSummary, UnitAdherentsResponse,
-    UnitSummary, Unite,
+    AdherentDetails, GoogleContactEntry, ImportSummary, ParsedRow, RepresentantLegalSummary,
+    UnitAdherentsResponse, UnitSummary, Unite,
 };
 use chrono::{Datelike, NaiveDate};
 use sqlx::{Row, SqlitePool};
+use std::collections::{BTreeSet, HashMap};
 
 fn deduce_saison(start: Option<NaiveDate>, end: Option<NaiveDate>) -> (String, NaiveDate, NaiveDate) {
     if let (Some(s), Some(e)) = (start, end) {
@@ -513,4 +514,180 @@ pub async fn get_unit_adherents(
         saison: saison_libelle,
         adherents,
     }))
+}
+
+struct ContactBuilder {
+    nom: String,
+    prenom: String,
+    telephone_mobile: Option<String>,
+    telephone_domicile: Option<String>,
+    courriel_personnel: Option<String>,
+    courriel_sgdf: Option<String>,
+    filiations: Vec<String>,
+    fonctions: Vec<String>,
+    unit_labels: BTreeSet<String>,
+}
+
+pub async fn get_google_contacts_export(
+    pool: &SqlitePool,
+) -> Result<Vec<GoogleContactEntry>, sqlx::Error> {
+    let saison_row = sqlx::query(
+        "SELECT id FROM saisons WHERE active = 1 ORDER BY date_debut DESC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    let saison_id: i64 = match saison_row {
+        Some(r) => r.get("id"),
+        None => return Ok(vec![]),
+    };
+
+    let mut builders: HashMap<i64, ContactBuilder> = HashMap::new();
+
+    // 1. Représentants légaux des jeunes inscrits dans la saison active
+    let parent_rows = sqlx::query(
+        "SELECT p.id as parent_id, p.nom as parent_nom, p.prenom as parent_prenom,
+                p.telephone_mobile as parent_mob, p.telephone_domicile as parent_dom,
+                p.courriel_personnel as parent_email, p.courriel_sgdf as parent_sgdf,
+                j.prenom as jeune_prenom,
+                u.nom as unite_nom
+         FROM liens_parente lp
+         JOIN individus p ON p.id = lp.parent_id
+         JOIN individus j ON j.id = lp.jeune_id
+         JOIN inscriptions insc ON insc.individu_id = j.id AND insc.saison_id = lp.saison_id AND insc.active = 1
+         JOIN unites u ON u.id = insc.unite_id
+         WHERE lp.saison_id = ?
+         ORDER BY p.nom, p.prenom, j.prenom",
+    )
+    .bind(saison_id)
+    .fetch_all(pool)
+    .await?;
+
+    for r in parent_rows {
+        let parent_id: i64 = r.get("parent_id");
+        let parent_nom: String = r.get("parent_nom");
+        let parent_prenom: String = r.get("parent_prenom");
+        let parent_mob: Option<String> = r.get("parent_mob");
+        let parent_dom: Option<String> = r.get("parent_dom");
+        let parent_email: Option<String> = r.get("parent_email");
+        let parent_sgdf: Option<String> = r.get("parent_sgdf");
+        let jeune_prenom: String = r.get("jeune_prenom");
+        let unite_nom: String = r.get("unite_nom");
+
+        let entry = builders.entry(parent_id).or_insert_with(|| ContactBuilder {
+            nom: parent_nom,
+            prenom: parent_prenom,
+            telephone_mobile: parent_mob,
+            telephone_domicile: parent_dom,
+            courriel_personnel: parent_email,
+            courriel_sgdf: parent_sgdf,
+            filiations: Vec::new(),
+            fonctions: Vec::new(),
+            unit_labels: BTreeSet::new(),
+        });
+
+        let filiation = format!("{} ({})", jeune_prenom, unite_nom);
+        if !entry.filiations.contains(&filiation) {
+            entry.filiations.push(filiation);
+        }
+        entry.unit_labels.insert(format!("SGDF - {}", unite_nom));
+    }
+
+    // 2. Adultes, cadres, chefs et compagnons
+    let adult_rows = sqlx::query(
+        "SELECT ind.id, ind.nom, ind.prenom,
+                ind.telephone_mobile, ind.telephone_domicile,
+                ind.courriel_personnel, ind.courriel_sgdf,
+                insc.fonction_libelle, u.nom as unite_nom
+         FROM inscriptions insc
+         JOIN individus ind ON ind.id = insc.individu_id
+         JOIN unites u ON u.id = insc.unite_id
+         WHERE insc.saison_id = ? AND insc.active = 1
+           AND (
+                insc.fonction_libelle IS NOT NULL
+                AND UPPER(insc.fonction_libelle) NOT IN ('FARFADET', 'LOUVETEAU', 'JEANNETTE', 'SCOUT', 'GUIDE', 'PIONNIER', 'CARAVELLE')
+           )",
+    )
+    .bind(saison_id)
+    .fetch_all(pool)
+    .await?;
+
+    for r in adult_rows {
+        let ind_id: i64 = r.get("id");
+        let nom: String = r.get("nom");
+        let prenom: String = r.get("prenom");
+        let mob: Option<String> = r.get("telephone_mobile");
+        let dom: Option<String> = r.get("telephone_domicile");
+        let email: Option<String> = r.get("courriel_personnel");
+        let email_sgdf: Option<String> = r.get("courriel_sgdf");
+        let fonction: Option<String> = r.get("fonction_libelle");
+        let unite_nom: String = r.get("unite_nom");
+
+        let entry = builders.entry(ind_id).or_insert_with(|| ContactBuilder {
+            nom: nom.clone(),
+            prenom: prenom.clone(),
+            telephone_mobile: mob.clone(),
+            telephone_domicile: dom,
+            courriel_personnel: email.clone(),
+            courriel_sgdf: email_sgdf.clone(),
+            filiations: Vec::new(),
+            fonctions: Vec::new(),
+            unit_labels: BTreeSet::new(),
+        });
+
+        if entry.telephone_mobile.is_none() {
+            entry.telephone_mobile = mob;
+        }
+        if entry.courriel_personnel.is_none() {
+            entry.courriel_personnel = email;
+        }
+        if entry.courriel_sgdf.is_none() {
+            entry.courriel_sgdf = email_sgdf;
+        }
+
+        if let Some(f) = fonction {
+            let desc = format!("{} ({})", f, unite_nom);
+            if !entry.fonctions.contains(&desc) {
+                entry.fonctions.push(desc);
+            }
+        }
+        entry.unit_labels.insert(format!("SGDF - {}", unite_nom));
+    }
+
+    // 3. Transformation en liste ordonnée finale
+    let mut contacts: Vec<GoogleContactEntry> = builders
+        .into_values()
+        .map(|b| {
+            let mut notes_parts = Vec::new();
+            if !b.filiations.is_empty() {
+                notes_parts.push(format!("Parent de : {}", b.filiations.join(", ")));
+            }
+            if !b.fonctions.is_empty() {
+                notes_parts.push(format!("Fonction : {}", b.fonctions.join(", ")));
+            }
+            let notes = if notes_parts.is_empty() {
+                None
+            } else {
+                Some(notes_parts.join(" | "))
+            };
+
+            let mut labels = vec!["SGDF".to_string()];
+            labels.extend(b.unit_labels);
+
+            GoogleContactEntry {
+                nom: b.nom,
+                prenom: b.prenom,
+                telephone_mobile: b.telephone_mobile,
+                telephone_domicile: b.telephone_domicile,
+                courriel_personnel: b.courriel_personnel,
+                courriel_sgdf: b.courriel_sgdf,
+                notes,
+                labels,
+            }
+        })
+        .collect();
+
+    contacts.sort_by(|a, b| a.nom.cmp(&b.nom).then_with(|| a.prenom.cmp(&b.prenom)));
+
+    Ok(contacts)
 }

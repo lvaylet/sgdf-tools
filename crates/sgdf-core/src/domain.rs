@@ -39,6 +39,18 @@ pub struct Unite {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoogleContactEntry {
+    pub nom: String,
+    pub prenom: String,
+    pub telephone_mobile: Option<String>,
+    pub telephone_domicile: Option<String>,
+    pub courriel_personnel: Option<String>,
+    pub courriel_sgdf: Option<String>,
+    pub notes: Option<String>,
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitSummary {
     pub id: i64,
     pub code_structure: String,

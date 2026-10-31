@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 use comfy_table::{presets::UTF8_FULL, Table};
 use reqwest::multipart::{Form, Part};
-use sgdf_core::domain::{ImportSummary, UnitAdherentsResponse, UnitSummary, Unite};
+use sgdf_core::domain::{
+    GoogleContactEntry, ImportSummary, UnitAdherentsResponse, UnitSummary, Unite,
+};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -37,6 +39,12 @@ enum Commands {
         #[command(subcommand)]
         command: UnitsCommands,
     },
+
+    /// Exportations des données consolidées du groupe
+    Export {
+        #[command(subcommand)]
+        command: ExportCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -57,6 +65,12 @@ enum UnitsCommands {
         /// JID du groupe WhatsApp (ex: 120363xxx@g.us)
         jid: String,
     },
+}
+
+#[derive(Subcommand)]
+enum ExportCommands {
+    /// Exporte les fiches contacts consolidées pour Google Contacts
+    GoogleContacts,
 }
 
 #[tokio::main]
@@ -247,6 +261,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         updated.nom,
                         updated.whatsapp_group_jid.as_deref().unwrap_or("-")
                     );
+                }
+            }
+        },
+        Commands::Export { command } => match command {
+            ExportCommands::GoogleContacts => {
+                let req = send_req(client.get(format!("{}/api/v1/exports/google-contacts", cli.api_url)));
+                let res = req.send().await?;
+                if !res.status().is_success() {
+                    eprintln!("Erreur lors de l'export des contacts : {}", res.status());
+                    std::process::exit(1);
+                }
+
+                let contacts: Vec<GoogleContactEntry> = res.json().await?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&contacts)?);
+                } else {
+                    let mut table = Table::new();
+                    table.load_preset(UTF8_FULL);
+                    table.set_header(vec![
+                        "Nom & Prénom",
+                        "Mobile",
+                        "Courriel",
+                        "Notes (Filiation & Fonctions)",
+                        "Labels",
+                    ]);
+
+                    for c in contacts {
+                        table.add_row(vec![
+                            format!("{} {}", c.nom, c.prenom),
+                            c.telephone_mobile.unwrap_or_default(),
+                            c.courriel_personnel.or(c.courriel_sgdf).unwrap_or_default(),
+                            c.notes.unwrap_or_default(),
+                            c.labels.join(", "),
+                        ]);
+                    }
+                    println!("{}", table);
                 }
             }
         },

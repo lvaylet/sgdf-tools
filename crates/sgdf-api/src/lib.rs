@@ -26,6 +26,7 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
         .route("/api/v1/units", get(list_units))
         .route("/api/v1/units/{id}", patch(update_unit))
         .route("/api/v1/units/{id}/members", get(get_unit_members))
+        .route("/api/v1/exports/google-contacts", get(export_google_contacts))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -136,4 +137,19 @@ async fn get_unit_members(
             Json(json!({ "error": format!("Unité avec l'id {} introuvable", id) })),
         )),
     }
+}
+
+async fn export_google_contacts(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let contacts = sgdf_core::store::get_google_contacts_export(&state.pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+            )
+        })?;
+
+    Ok((StatusCode::OK, Json(contacts)))
 }
