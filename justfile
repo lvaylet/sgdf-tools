@@ -57,3 +57,8 @@ cli *args:
 # Importe un fichier d'export Gest'Act vers l'instance locale
 import file="assets/ExportIndividus.xls":
     cargo run -p sgdf-cli -- import {{file}}
+
+# Exécute l'audit WhatsApp global en interrogeant directement WAHA
+audit-whatsapp *args:
+    bash scripts/audit-whatsapp-waha.sh {{args}}
+
