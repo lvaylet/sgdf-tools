@@ -33,4 +33,4 @@ comfy-table = "7.1"
 axum = { version = "0.8", features = ["multipart"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 utoipa = { version = "6.0", features = ["chrono"] }
-utoipa-swagger-ui = { version = "10.0", features = ["axum"] }
+utoipa-swagger-ui = { version = "10.0", features = ["axum", "vendored"] }
