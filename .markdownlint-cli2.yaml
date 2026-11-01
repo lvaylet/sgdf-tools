@@ -6,6 +6,7 @@ ignores:
   - ".agents/**"
   - "AGENTS.md"
   - ".direnv/**"
+  - "assets/wa-group-jids.md"
 
 config:
   default: true
