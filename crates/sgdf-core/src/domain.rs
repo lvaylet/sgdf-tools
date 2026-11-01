@@ -1,7 +1,8 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ImportSummary {
     pub individus_importes: i64,
     pub unites_importees: i64,
@@ -9,7 +10,7 @@ pub struct ImportSummary {
     pub liens_parente_importes: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Individu {
     pub id: Option<i64>,
     pub civilite: Option<String>,
@@ -30,7 +31,7 @@ pub struct Individu {
     pub droit_image_externe: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Unite {
     pub id: Option<i64>,
     pub code_structure: String,
@@ -38,12 +39,12 @@ pub struct Unite {
     pub whatsapp_group_jid: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct WhatsappAuditRequest {
     pub participants: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct WhatsappAuditMissing {
     pub nom: String,
     pub prenom: String,
@@ -55,7 +56,7 @@ pub struct WhatsappAuditMissing {
     pub jeunes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct WhatsappAuditIntruder {
     pub nom: String,
     pub prenom: String,
@@ -64,7 +65,7 @@ pub struct WhatsappAuditIntruder {
     pub unites_legitimes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct WhatsappAuditResponse {
     pub missing: Vec<WhatsappAuditMissing>,
     #[serde(default)]
@@ -72,14 +73,14 @@ pub struct WhatsappAuditResponse {
     pub unknown: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct WhatsappGroupParticipantsInput {
     pub unit_id: Option<i64>,
     pub jid: Option<String>,
     pub participants: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub enum GlobalWhatsappAuditRequest {
     Wrapped {
@@ -97,7 +98,7 @@ impl GlobalWhatsappAuditRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct UnitWhatsappAuditResult {
     pub unit_id: i64,
     pub unit_nom: String,
@@ -105,7 +106,7 @@ pub struct UnitWhatsappAuditResult {
     pub audit: WhatsappAuditResponse,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct GlobalWhatsappAuditSummary {
     pub units_auditees: usize,
     pub total_manquants: usize,
@@ -113,13 +114,13 @@ pub struct GlobalWhatsappAuditSummary {
     pub total_inconnus: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct GlobalWhatsappAuditResponse {
     pub summary: GlobalWhatsappAuditSummary,
     pub units: Vec<UnitWhatsappAuditResult>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct GoogleContactEntry {
     pub nom: String,
     pub prenom: String,
@@ -131,7 +132,7 @@ pub struct GoogleContactEntry {
     pub labels: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct UnitSummary {
     pub id: i64,
     pub code_structure: String,
@@ -141,7 +142,7 @@ pub struct UnitSummary {
     pub adherents_count: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct RepresentantLegalSummary {
     pub id: i64,
     pub nom: String,
@@ -150,14 +151,14 @@ pub struct RepresentantLegalSummary {
     pub courriel: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct JeuneRattache {
     pub nom: String,
     pub prenom: String,
     pub unite: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct RepresentantLegalDetail {
     pub id: i64,
     pub nom: String,
@@ -175,7 +176,7 @@ pub struct RepresentantLegalDetail {
     pub jeunes: Vec<JeuneRattache>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdherentDetails {
     pub id: i64,
     pub nom: String,
@@ -188,7 +189,7 @@ pub struct AdherentDetails {
     pub representants_legaux: Vec<RepresentantLegalSummary>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct UnitAdherentsResponse {
     pub unit: Unite,
     pub saison: String,
@@ -196,13 +197,13 @@ pub struct UnitAdherentsResponse {
     pub adherents: Vec<AdherentDetails>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct UpdateUnitPayload {
     #[serde(default)]
     pub whatsapp_group_jid: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Saison {
     pub id: Option<i64>,
     pub libelle: String,

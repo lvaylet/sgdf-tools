@@ -16,6 +16,7 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+utoipa.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

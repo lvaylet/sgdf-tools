@@ -197,6 +197,11 @@ curl http://127.0.0.1:3000/health
 # Réponse : OK
 ```
 
+Documentation interactive OpenAPI & Swagger UI :
+
+- **Swagger UI** : Accédez à `http://127.0.0.1:3000/swagger-ui/` dans votre navigateur pour explorer et tester interactivement l'ensemble des endpoints. Le bouton **Authorize** permet de renseigner votre jeton Bearer pour tester les routes sécurisées.
+- **Spécification OpenAPI (JSON)** : Disponible publiquement sur `http://127.0.0.1:3000/api-docs/openapi.json` (importable dans Postman, Insomnia ou n8n).
+
 ### Ligne de commande (`sgdf-cli`)
 
 La CLI est un client HTTP léger qui interroge l'API (voir [ADR-0002](docs/adr/0002-cli-as-api-client.md)).

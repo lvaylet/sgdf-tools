@@ -6,10 +6,87 @@ use axum::{
     Router,
 };
 use serde_json::json;
-use sgdf_core::domain::{GlobalWhatsappAuditRequest, UpdateUnitPayload, WhatsappAuditRequest};
+use sgdf_core::domain::{
+    AdherentDetails, GlobalWhatsappAuditRequest, GlobalWhatsappAuditResponse,
+    GlobalWhatsappAuditSummary, GoogleContactEntry, ImportSummary, Individu, JeuneRattache,
+    RepresentantLegalDetail, RepresentantLegalSummary, Saison, UnitAdherentsResponse, UnitSummary,
+    UnitWhatsappAuditResult, Unite, UpdateUnitPayload, WhatsappAuditIntruder, WhatsappAuditMissing,
+    WhatsappAuditRequest, WhatsappAuditResponse, WhatsappGroupParticipantsInput,
+};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::{Modify, OpenApi};
+use utoipa_swagger_ui::SwaggerUi;
+
+pub struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                SecurityScheme::Http(
+                    HttpBuilder::new()
+                        .scheme(HttpAuthScheme::Bearer)
+                        .bearer_format("Secret Token")
+                        .description(Some(
+                            "Jeton d'authentification Bearer (ex. SGDF_AUTH_TOKEN)",
+                        ))
+                        .build(),
+                ),
+            );
+        }
+    }
+}
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        health_check,
+        import_gestact_file,
+        list_units,
+        update_unit,
+        get_unit_members,
+        export_google_contacts,
+        list_representants_legaux,
+        audit_unit_whatsapp_handler,
+        audit_global_whatsapp_handler,
+    ),
+    components(
+        schemas(
+            ImportSummary,
+            Individu,
+            Unite,
+            UnitSummary,
+            UpdateUnitPayload,
+            RepresentantLegalSummary,
+            JeuneRattache,
+            RepresentantLegalDetail,
+            AdherentDetails,
+            UnitAdherentsResponse,
+            GoogleContactEntry,
+            WhatsappAuditRequest,
+            WhatsappAuditMissing,
+            WhatsappAuditIntruder,
+            WhatsappAuditResponse,
+            WhatsappGroupParticipantsInput,
+            GlobalWhatsappAuditRequest,
+            UnitWhatsappAuditResult,
+            GlobalWhatsappAuditSummary,
+            GlobalWhatsappAuditResponse,
+            Saison,
+        )
+    ),
+    modifiers(&SecurityAddon),
+    info(
+        title = "SGDF Tools API",
+        version = "0.1.0",
+        description = "API REST de gestion des adhérents, contacts, représentants légaux et audits WhatsApp pour groupe scout SGDF"
+    )
+)]
+pub struct ApiDoc;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -38,6 +115,7 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
         ));
 
     Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health_check))
         .nest("/api", api_routes)
         .layer(TraceLayer::new_for_http())
@@ -92,10 +170,32 @@ async fn auth_middleware(
     Ok(next.run(req).await)
 }
 
+#[utoipa::path(
+    get,
+    path = "/health",
+    tag = "Santé",
+    responses(
+        (status = 200, description = "Serveur opérationnel", body = String)
+    )
+)]
 async fn health_check() -> &'static str {
     "OK"
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/imports",
+    tag = "Imports",
+    responses(
+        (status = 200, description = "Synthèse de l'import Gest'Act", body = ImportSummary),
+        (status = 400, description = "Fichier manquant dans le payload multipart"),
+        (status = 422, description = "Format de fichier invalide"),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn import_gestact_file(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
@@ -135,6 +235,18 @@ async fn import_gestact_file(
     Ok((StatusCode::OK, Json(summary)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/units",
+    tag = "Unités",
+    responses(
+        (status = 200, description = "Liste des unités avec effectifs et JID WhatsApp", body = Vec<UnitSummary>),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn list_units(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
@@ -150,6 +262,23 @@ async fn list_units(
     Ok((StatusCode::OK, Json(units)))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/units/{id}",
+    tag = "Unités",
+    params(
+        ("id" = i64, Path, description = "Identifiant unique de l'unité")
+    ),
+    request_body = UpdateUnitPayload,
+    responses(
+        (status = 200, description = "Unité mise à jour", body = Unite),
+        (status = 404, description = "Unité introuvable"),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn update_unit(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
@@ -174,6 +303,22 @@ async fn update_unit(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/units/{id}/members",
+    tag = "Unités",
+    params(
+        ("id" = i64, Path, description = "Identifiant unique de l'unité")
+    ),
+    responses(
+        (status = 200, description = "Adhérents et représentants légaux rattachés à l'unité", body = UnitAdherentsResponse),
+        (status = 404, description = "Unité introuvable"),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn get_unit_members(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
@@ -196,6 +341,18 @@ async fn get_unit_members(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/exports/google-contacts",
+    tag = "Exports",
+    responses(
+        (status = 200, description = "Export normalisé des contacts pour Google Contacts", body = Vec<GoogleContactEntry>),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn export_google_contacts(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
@@ -211,6 +368,23 @@ async fn export_google_contacts(
     Ok((StatusCode::OK, Json(contacts)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/units/{id}/whatsapp-audit",
+    tag = "Audits WhatsApp",
+    params(
+        ("id" = i64, Path, description = "Identifiant unique de l'unité")
+    ),
+    request_body = WhatsappAuditRequest,
+    responses(
+        (status = 200, description = "Rapport différentiel d'audit WhatsApp de l'unité", body = WhatsappAuditResponse),
+        (status = 404, description = "Unité introuvable"),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn audit_unit_whatsapp_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
@@ -234,6 +408,18 @@ async fn audit_unit_whatsapp_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/representants-legaux",
+    tag = "Représentants Légaux",
+    responses(
+        (status = 200, description = "Listing complet des représentants légaux avec adresses et téléphones", body = Vec<RepresentantLegalDetail>),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn list_representants_legaux(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
@@ -249,6 +435,19 @@ async fn list_representants_legaux(
     Ok((StatusCode::OK, Json(reps)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/audits/whatsapp",
+    tag = "Audits WhatsApp",
+    request_body = GlobalWhatsappAuditRequest,
+    responses(
+        (status = 200, description = "Rapport différentiel consolidé multi-groupes", body = GlobalWhatsappAuditResponse),
+        (status = 401, description = "Authentification requise")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 async fn audit_global_whatsapp_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<GlobalWhatsappAuditRequest>,
