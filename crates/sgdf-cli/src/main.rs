@@ -2,8 +2,8 @@ use clap::{Parser, Subcommand};
 use comfy_table::{presets::UTF8_FULL, Table};
 use reqwest::multipart::{Form, Part};
 use sgdf_core::domain::{
-    GoogleContactEntry, ImportSummary, RepresentantLegalDetail, UnitAdherentsResponse, UnitSummary,
-    Unite, WhatsappAuditRequest, WhatsappAuditResponse,
+    GlobalWhatsappAuditResponse, GoogleContactEntry, ImportSummary, RepresentantLegalDetail,
+    UnitAdherentsResponse, UnitSummary, Unite, WhatsappAuditRequest, WhatsappAuditResponse,
 };
 use std::path::PathBuf;
 
@@ -103,6 +103,13 @@ enum AuditCommands {
         /// Liste de numéros séparés par des virgules ou chemin vers un fichier (texte ou JSON)
         #[arg(long)]
         participants: String,
+    },
+
+    /// Audit global de l'ensemble des groupes WhatsApp du groupe scout
+    WhatsappAll {
+        /// Fichier JSON ou payload contenant les groupes et leurs participants
+        #[arg(long)]
+        groups: String,
     },
 }
 
@@ -482,9 +489,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     println!("=== Audit WhatsApp pour l'unité ID {} ===", unit_id);
                     println!(
-                        "Participants analysés : {} | Manquants : {} | Inconnus / Obsolètes : {}",
+                        "Participants analysés : {} | Manquants : {} | Intrus connus : {} | Inconnus : {}",
                         audit_payload.participants.len(),
                         audit_res.missing.len(),
+                        audit_res.unexpected.len(),
                         audit_res.unknown.len()
                     );
                     println!();
@@ -521,6 +529,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!();
 
                     println!(
+                        "--- Intrus connus détectés ({}) ---",
+                        audit_res.unexpected.len()
+                    );
+                    if audit_res.unexpected.is_empty() {
+                        println!("Aucun intrus connu détecté.");
+                    } else {
+                        let mut table = Table::new();
+                        table.load_preset(UTF8_FULL);
+                        table.set_header(vec![
+                            "Nom & Prénom",
+                            "Téléphone",
+                            "Description",
+                            "Unités légitimes",
+                        ]);
+                        for intr in audit_res.unexpected {
+                            table.add_row(vec![
+                                format!("{} {}", intr.nom, intr.prenom),
+                                intr.telephone,
+                                intr.description,
+                                intr.unites_legitimes.join(", "),
+                            ]);
+                        }
+                        println!("{}", table);
+                    }
+                    println!();
+
+                    println!(
                         "--- Participants inconnus ou obsolètes ({}) ---",
                         audit_res.unknown.len()
                     );
@@ -534,6 +569,134 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             table.add_row(vec![u]);
                         }
                         println!("{}", table);
+                    }
+                }
+            }
+            AuditCommands::WhatsappAll { groups } => {
+                let content = if std::path::Path::new(&groups).exists() {
+                    tokio::fs::read_to_string(&groups).await?
+                } else {
+                    groups.clone()
+                };
+
+                let parsed_json: serde_json::Value =
+                    serde_json::from_str(&content).map_err(|e| {
+                        format!(
+                            "Le contenu fourni pour --groups n'est pas un JSON valide : {}",
+                            e
+                        )
+                    })?;
+
+                let req = send_req(
+                    client
+                        .post(format!("{}/api/v1/audits/whatsapp", cli.api_url))
+                        .json(&parsed_json),
+                );
+                let res = handle_response(req.send().await?, "l'audit global WhatsApp").await?;
+                let audit_res: GlobalWhatsappAuditResponse = res.json().await?;
+
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&audit_res)?);
+                } else {
+                    println!("=== Synthèse de l'audit WhatsApp global ===");
+                    println!(
+                        "Unités auditées       : {}",
+                        audit_res.summary.units_auditees
+                    );
+                    println!(
+                        "Total manquants       : {}",
+                        audit_res.summary.total_manquants
+                    );
+                    println!(
+                        "Total intrus connus   : {}",
+                        audit_res.summary.total_intrus_connus
+                    );
+                    println!(
+                        "Total numéros inconnus: {}",
+                        audit_res.summary.total_inconnus
+                    );
+                    println!();
+
+                    for unit in audit_res.units {
+                        println!("============================================================");
+                        println!(
+                            "Unité : {} (ID {}) | JID : {}",
+                            unit.unit_nom,
+                            unit.unit_id,
+                            unit.whatsapp_group_jid
+                                .as_deref()
+                                .unwrap_or("Non configuré")
+                        );
+                        println!(
+                            "Manquants : {} | Intrus connus : {} | Inconnus : {}",
+                            unit.audit.missing.len(),
+                            unit.audit.unexpected.len(),
+                            unit.audit.unknown.len()
+                        );
+                        println!();
+
+                        if !unit.audit.missing.is_empty() {
+                            println!("--- Manquants ({}) ---", unit.audit.missing.len());
+                            let mut table = Table::new();
+                            table.load_preset(UTF8_FULL);
+                            table.set_header(vec!["Nom & Prénom", "Téléphone(s)", "Jeune(s)"]);
+                            for m in unit.audit.missing {
+                                let tels = if m.telephones.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    m.telephones.join(", ")
+                                };
+                                let jeunes_str = if m.jeunes.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    m.jeunes.join(", ")
+                                };
+                                table.add_row(vec![
+                                    format!("{} {}", m.nom, m.prenom),
+                                    tels,
+                                    jeunes_str,
+                                ]);
+                            }
+                            println!("{}", table);
+                            println!();
+                        }
+
+                        if !unit.audit.unexpected.is_empty() {
+                            println!("--- Intrus connus ({}) ---", unit.audit.unexpected.len());
+                            let mut table = Table::new();
+                            table.load_preset(UTF8_FULL);
+                            table.set_header(vec![
+                                "Nom & Prénom",
+                                "Téléphone",
+                                "Description",
+                                "Unités légitimes",
+                            ]);
+                            for intr in unit.audit.unexpected {
+                                table.add_row(vec![
+                                    format!("{} {}", intr.nom, intr.prenom),
+                                    intr.telephone,
+                                    intr.description,
+                                    intr.unites_legitimes.join(", "),
+                                ]);
+                            }
+                            println!("{}", table);
+                            println!();
+                        }
+
+                        if !unit.audit.unknown.is_empty() {
+                            println!(
+                                "--- Inconnus / Obsolètes ({}) ---",
+                                unit.audit.unknown.len()
+                            );
+                            let mut table = Table::new();
+                            table.load_preset(UTF8_FULL);
+                            table.set_header(vec!["Numéro"]);
+                            for u in unit.audit.unknown {
+                                table.add_row(vec![u]);
+                            }
+                            println!("{}", table);
+                            println!();
+                        }
                     }
                 }
             }

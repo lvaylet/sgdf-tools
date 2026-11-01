@@ -1,7 +1,9 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use sgdf_core::domain::{UnitSummary, WhatsappAuditRequest, WhatsappAuditResponse};
+use sgdf_core::domain::{
+    GlobalWhatsappAuditResponse, UnitSummary, WhatsappAuditRequest, WhatsappAuditResponse,
+};
 use tower::ServiceExt;
 
 async fn setup_app_with_data() -> (sqlx::SqlitePool, axum::Router) {
@@ -41,11 +43,13 @@ async fn test_whatsapp_audit_end_to_end() {
     // 2. Préparer un payload d'audit avec :
     // - Laurent Vaylet (présent, sous format 0687966975)
     // - Jaina Elléouët (cheftaine de l'unité, sous format WAHA 33661135865@c.us)
+    // - Louison Ully (Compagnon, sous format 0782449488 -> intrus connu dans cette unité !)
     // - Deux numéros inconnus / obsolètes (+33699999999 et 0688888888)
     let audit_req = WhatsappAuditRequest {
         participants: vec![
             "0687966975".to_string(),
             "33661135865@c.us".to_string(),
+            "0782449488".to_string(),
             "+33699999999".to_string(),
             "0688888888".to_string(),
         ],
@@ -70,6 +74,18 @@ async fn test_whatsapp_audit_end_to_end() {
     assert!(audit_res.unknown.contains(&"+33688888888".to_string()));
     assert!(!audit_res.unknown.contains(&"+33687966975".to_string()));
     assert!(!audit_res.unknown.contains(&"+33661135865".to_string()));
+    assert!(!audit_res.unknown.contains(&"+33782449488".to_string()));
+
+    // 4. Vérifier les intrus connus (Louison Ully est dans les Compagnons, pas Scouts-Guides)
+    assert_eq!(audit_res.unexpected.len(), 1);
+    let intruder = &audit_res.unexpected[0];
+    assert_eq!(intruder.nom, "ULLY");
+    assert_eq!(intruder.prenom, "LOUISON");
+    assert_eq!(intruder.telephone, "+33782449488");
+    assert!(intruder
+        .unites_legitimes
+        .iter()
+        .any(|u| u.contains("COMPAGNONS")));
 
     // 4. Vérifier les manquants
     // Laurent Vaylet est présent, donc il ne doit PAS être dans missing
@@ -142,4 +158,66 @@ async fn test_whatsapp_audit_end_to_end() {
         marguerite.jeunes.is_empty(),
         "Pour une unité compagnon, jeunes doit être vide"
     );
+}
+
+#[tokio::test]
+async fn test_whatsapp_global_audit_end_to_end() {
+    let (pool, app) = setup_app_with_data().await;
+
+    // 1. Configurer un JID pour l'unité Compagnons
+    let compa_unit: (i64,) = sqlx::query_as("SELECT id FROM unites WHERE nom LIKE '%COMPAGNONS%'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let compa_jid = "120363999999999@g.us";
+    sgdf_core::store::update_unit_jid(&pool, compa_unit.0, Some(compa_jid))
+        .await
+        .unwrap();
+
+    let sg_unit: (i64,) = sqlx::query_as("SELECT id FROM unites WHERE nom LIKE '%SCOUTS GUIDES%'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // 2. Préparer une requête globale multi-groupes :
+    // - Un groupe par unit_id (Scouts Guides)
+    // - Un groupe par JID (Compagnons)
+    let payload = serde_json::json!({
+        "groups": [
+            {
+                "unit_id": sg_unit.0,
+                "participants": [
+                    "0687966975", // Laurent Vaylet (présent)
+                    "0782449488", // Louison Ully (intrus connu)
+                    "+33699999999" // Inconnu
+                ]
+            },
+            {
+                "jid": compa_jid,
+                "participants": [
+                    "0782449488" // Louison Ully (présente)
+                ]
+            }
+        ]
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/audits/whatsapp")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let global_audit: GlobalWhatsappAuditResponse = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(global_audit.summary.units_auditees, 2);
+    assert!(global_audit.summary.total_manquants > 0);
+    assert_eq!(global_audit.summary.total_intrus_connus, 1);
+    assert_eq!(global_audit.summary.total_inconnus, 1);
+    assert_eq!(global_audit.units.len(), 2);
 }

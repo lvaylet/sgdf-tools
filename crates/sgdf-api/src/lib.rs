@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use serde_json::json;
-use sgdf_core::domain::{UpdateUnitPayload, WhatsappAuditRequest};
+use sgdf_core::domain::{GlobalWhatsappAuditRequest, UpdateUnitPayload, WhatsappAuditRequest};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
@@ -31,6 +31,7 @@ pub fn build_app(pool: SqlitePool, auth_token: Option<String>) -> Router {
             "/v1/units/{id}/whatsapp-audit",
             post(audit_unit_whatsapp_handler),
         )
+        .route("/v1/audits/whatsapp", post(audit_global_whatsapp_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -246,4 +247,20 @@ async fn list_representants_legaux(
         })?;
 
     Ok((StatusCode::OK, Json(reps)))
+}
+
+async fn audit_global_whatsapp_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<GlobalWhatsappAuditRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let result = sgdf_core::store::audit_global_whatsapp(&state.pool, payload.groups())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Erreur de base de données : {}", e) })),
+            )
+        })?;
+
+    Ok((StatusCode::OK, Json(result)))
 }

@@ -91,8 +91,18 @@ async fn test_auth_middleware_protects_api_routes() {
         .body(Body::from(r#"{"participants":[]}"#))
         .unwrap();
 
-    let res_audit = app.oneshot(req_audit).await.unwrap();
+    let res_audit = app.clone().oneshot(req_audit).await.unwrap();
     assert_eq!(res_audit.status(), StatusCode::UNAUTHORIZED);
+
+    let req_audit_global = Request::builder()
+        .method("POST")
+        .uri("/api/v1/audits/whatsapp")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"groups":[]}"#))
+        .unwrap();
+
+    let res_audit_global = app.oneshot(req_audit_global).await.unwrap();
+    assert_eq!(res_audit_global.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

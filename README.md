@@ -37,8 +37,9 @@ Suite d'outils écrite en Rust pour faciliter la gestion administrative et opér
    - Exposition d'un endpoint API générant des fiches prêtes à l'emploi avec noms, téléphones, courriels, filiation dans le champ note (ex. `Parent de : Lisa (Scouts-Guides), Lucie (Farfadets)`) et labels d'unités (`SGDF`, `SGDF - Scouts-Guides`).
 
 4. **Audit différentiel WhatsApp (via WAHA & n8n)** :
-   - Endpoint d'audit comparant les membres effectifs d'un groupe WhatsApp (fournis par le service WAHA) avec les représentants légaux attendus d'une unité.
-   - Détection des parents manquants et des numéros obsolètes ou inconnus.
+   - Comparaison des membres effectifs d'un ou plusieurs groupes WhatsApp (fournis par WAHA) avec les personnes attendues.
+   - Détection des représentants légaux manquants, identification des intrus connus (membres ou parents d'autres unités) et signalement des numéros inconnus.
+   - Support d'un audit ciblé par unité ou d'un audit global multi-groupes (`POST /api/v1/audits/whatsapp` et `sgdf audit whatsapp-all`).
 
 ---
 
@@ -206,9 +207,13 @@ sgdf representants list --json
 # Exporter les contacts normalisés pour Google Contacts
 sgdf export google-contacts --json
 
-# Réaliser un audit différentiel WhatsApp via les numéros extraits de WAHA
+# Réaliser un audit différentiel WhatsApp ciblé sur une unité
 sgdf audit whatsapp 1 --participants "+33687966975,0609266743"
 sgdf audit whatsapp 1 --participants /tmp/waha_participants.json
+
+# Réaliser un audit différentiel WhatsApp global multi-groupes
+sgdf audit whatsapp-all --groups /tmp/all_groups.json
+sgdf audit whatsapp-all --groups /tmp/all_groups.json --json
 
 # Cibler une instance distante avec authentification Bearer
 sgdf --api-url https://sgdf.homelab.vaylet.fr --token "VOTRE_TOKEN" status

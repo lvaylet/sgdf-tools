@@ -56,9 +56,67 @@ pub struct WhatsappAuditMissing {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WhatsappAuditIntruder {
+    pub nom: String,
+    pub prenom: String,
+    pub telephone: String,
+    pub description: String,
+    pub unites_legitimes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WhatsappAuditResponse {
     pub missing: Vec<WhatsappAuditMissing>,
+    #[serde(default)]
+    pub unexpected: Vec<WhatsappAuditIntruder>,
     pub unknown: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WhatsappGroupParticipantsInput {
+    pub unit_id: Option<i64>,
+    pub jid: Option<String>,
+    pub participants: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GlobalWhatsappAuditRequest {
+    Wrapped {
+        groups: Vec<WhatsappGroupParticipantsInput>,
+    },
+    List(Vec<WhatsappGroupParticipantsInput>),
+}
+
+impl GlobalWhatsappAuditRequest {
+    pub fn groups(&self) -> &[WhatsappGroupParticipantsInput] {
+        match self {
+            Self::Wrapped { groups } => groups,
+            Self::List(groups) => groups,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnitWhatsappAuditResult {
+    pub unit_id: i64,
+    pub unit_nom: String,
+    pub whatsapp_group_jid: Option<String>,
+    pub audit: WhatsappAuditResponse,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlobalWhatsappAuditSummary {
+    pub units_auditees: usize,
+    pub total_manquants: usize,
+    pub total_intrus_connus: usize,
+    pub total_inconnus: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlobalWhatsappAuditResponse {
+    pub summary: GlobalWhatsappAuditSummary,
+    pub units: Vec<UnitWhatsappAuditResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

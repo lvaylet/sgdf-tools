@@ -1,7 +1,8 @@
 use crate::domain::{
-    AdherentDetails, GoogleContactEntry, JeuneRattache, RepresentantLegalDetail,
-    RepresentantLegalSummary, UnitAdherentsResponse, UnitSummary, Unite, WhatsappAuditMissing,
-    WhatsappAuditResponse,
+    AdherentDetails, GlobalWhatsappAuditResponse, GlobalWhatsappAuditSummary, GoogleContactEntry,
+    JeuneRattache, RepresentantLegalDetail, RepresentantLegalSummary, UnitAdherentsResponse,
+    UnitSummary, UnitWhatsappAuditResult, Unite, WhatsappAuditIntruder, WhatsappAuditMissing,
+    WhatsappAuditResponse, WhatsappGroupParticipantsInput,
 };
 use chrono::NaiveDate;
 use sqlx::{Row, SqlitePool};
@@ -372,6 +373,7 @@ pub async fn audit_unit_whatsapp(
         None => {
             return Ok(Some(WhatsappAuditResponse {
                 missing: vec![],
+                unexpected: vec![],
                 unknown: vec![],
             }))
         }
@@ -547,16 +549,178 @@ pub async fn audit_unit_whatsapp(
 
     missing.sort_by(|a, b| a.nom.cmp(&b.nom).then_with(|| a.prenom.cmp(&b.prenom)));
 
-    // 7. Calcul différentiel des participants inconnus
+    // 7. Calcul différentiel des intrus connus et participants inconnus
+    let mut unexpected = Vec::new();
     let mut unknown = Vec::new();
+
     for p in normalized_participants {
-        if !all_known_phones.contains(&p) && !unknown.contains(&p) {
-            unknown.push(p);
+        if !all_known_phones.contains(&p) {
+            let ind_rows = sqlx::query(
+                "SELECT id, nom, prenom
+                 FROM individus
+                 WHERE telephone_mobile = ? OR telephone_domicile = ?",
+            )
+            .bind(&p)
+            .bind(&p)
+            .fetch_all(pool)
+            .await?;
+
+            if ind_rows.is_empty() {
+                if !unknown.contains(&p) {
+                    unknown.push(p);
+                }
+            } else {
+                for ind in ind_rows {
+                    let ind_id: i64 = ind.get("id");
+                    let ind_nom: String = ind.get("nom");
+                    let ind_prenom: String = ind.get("prenom");
+
+                    let direct_inscs = sqlx::query(
+                        "SELECT u.nom as unite_nom, insc.fonction_libelle
+                         FROM inscriptions insc
+                         JOIN unites u ON u.id = insc.unite_id
+                         WHERE insc.individu_id = ? AND insc.saison_id = ? AND insc.active = 1",
+                    )
+                    .bind(ind_id)
+                    .bind(saison_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                    let youth_inscs = sqlx::query(
+                        "SELECT u.nom as unite_nom, j.prenom as jeune_prenom, j.nom as jeune_nom
+                         FROM liens_parente lp
+                         JOIN individus j ON j.id = lp.jeune_id
+                         JOIN inscriptions insc ON insc.individu_id = j.id AND insc.saison_id = lp.saison_id AND insc.active = 1
+                         JOIN unites u ON u.id = insc.unite_id
+                         WHERE lp.parent_id = ? AND lp.saison_id = ?
+                         ORDER BY j.nom, j.prenom",
+                    )
+                    .bind(ind_id)
+                    .bind(saison_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                    let mut unites_legitimes = BTreeSet::new();
+                    let mut desc_parts = Vec::new();
+
+                    if !youth_inscs.is_empty() {
+                        let filiations: Vec<String> = youth_inscs
+                            .iter()
+                            .map(|y| {
+                                let u_nom: String = y.get("unite_nom");
+                                let j_pre: String = y.get("jeune_prenom");
+                                unites_legitimes.insert(u_nom.clone());
+                                format!("{} ({})", j_pre, u_nom)
+                            })
+                            .collect();
+                        desc_parts
+                            .push(format!("Représentant légal de : {}", filiations.join(", ")));
+                    }
+
+                    if !direct_inscs.is_empty() {
+                        let foncs: Vec<String> = direct_inscs
+                            .iter()
+                            .map(|d| {
+                                let u_nom: String = d.get("unite_nom");
+                                let f_lib: Option<String> = d.get("fonction_libelle");
+                                unites_legitimes.insert(u_nom.clone());
+                                format!(
+                                    "{} ({})",
+                                    f_lib.unwrap_or_else(|| "Adhérent".to_string()),
+                                    u_nom
+                                )
+                            })
+                            .collect();
+                        desc_parts.push(format!("Fonction : {}", foncs.join(", ")));
+                    }
+
+                    let description = if desc_parts.is_empty() {
+                        "Contact SGDF hors saison active".to_string()
+                    } else {
+                        desc_parts.join(" | ")
+                    };
+
+                    let intruder = WhatsappAuditIntruder {
+                        nom: ind_nom,
+                        prenom: ind_prenom,
+                        telephone: p.clone(),
+                        description,
+                        unites_legitimes: unites_legitimes.into_iter().collect(),
+                    };
+
+                    if !unexpected.contains(&intruder) {
+                        unexpected.push(intruder);
+                    }
+                }
+            }
         }
     }
+
+    unexpected.sort_by(|a, b| a.nom.cmp(&b.nom).then_with(|| a.prenom.cmp(&b.prenom)));
     unknown.sort();
 
-    Ok(Some(WhatsappAuditResponse { missing, unknown }))
+    Ok(Some(WhatsappAuditResponse {
+        missing,
+        unexpected,
+        unknown,
+    }))
+}
+
+pub async fn audit_global_whatsapp(
+    pool: &SqlitePool,
+    groups: &[WhatsappGroupParticipantsInput],
+) -> Result<GlobalWhatsappAuditResponse, sqlx::Error> {
+    let mut unit_results = Vec::new();
+
+    for group in groups {
+        let unit_id = if let Some(id) = group.unit_id {
+            Some(id)
+        } else if let Some(jid) = &group.jid {
+            let row: Option<(i64,)> =
+                sqlx::query_as("SELECT id FROM unites WHERE whatsapp_group_jid = ?")
+                    .bind(jid)
+                    .fetch_optional(pool)
+                    .await?;
+            row.map(|r| r.0)
+        } else {
+            None
+        };
+
+        if let Some(uid) = unit_id {
+            let unit_info: Option<(String, Option<String>)> =
+                sqlx::query_as("SELECT nom, whatsapp_group_jid FROM unites WHERE id = ?")
+                    .bind(uid)
+                    .fetch_optional(pool)
+                    .await?;
+
+            if let Some((nom, jid)) = unit_info {
+                if let Some(audit) = audit_unit_whatsapp(pool, uid, &group.participants).await? {
+                    unit_results.push(UnitWhatsappAuditResult {
+                        unit_id: uid,
+                        unit_nom: nom,
+                        whatsapp_group_jid: jid.or_else(|| group.jid.clone()),
+                        audit,
+                    });
+                }
+            }
+        }
+    }
+
+    let total_manquants = unit_results.iter().map(|u| u.audit.missing.len()).sum();
+    let total_intrus_connus = unit_results.iter().map(|u| u.audit.unexpected.len()).sum();
+    let total_inconnus = unit_results.iter().map(|u| u.audit.unknown.len()).sum();
+
+    let summary = GlobalWhatsappAuditSummary {
+        units_auditees: unit_results.len(),
+        total_manquants,
+        total_intrus_connus,
+        total_inconnus,
+    };
+
+    Ok(GlobalWhatsappAuditResponse {
+        summary,
+        units: unit_results,
+    })
 }
 
 pub async fn get_representants_legaux(
