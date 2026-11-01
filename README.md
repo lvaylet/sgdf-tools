@@ -16,6 +16,7 @@ Suite d'outils écrite en Rust pour faciliter la gestion administrative et opér
 - [Utilisation](#-utilisation)
   - [Serveur API (`sgdf-api`)](#serveur-api-sgdf-api)
   - [Ligne de commande (`sgdf-cli`)](#ligne-de-commande-sgdf-cli)
+  - [Audit automatisé avec WAHA (`audit-whatsapp-waha.sh`)](#audit-automatisé-avec-waha-audit-whatsapp-wahash)
 - [Déploiement sur NixOS](#-déploiement-sur-nixos)
 - [Documentation & Modèle Métier](#-documentation--modèle-métier)
 
@@ -133,6 +134,7 @@ Le projet utilise un [Nix Flake](https://nixos.wiki/wiki/Flakes) couplé à [dir
    just run-api        # Démarre l'API locale avec SQLite
    just cli status     # Exécute la CLI (ex. just cli units list)
    just import         # Raccourci pour importer assets/ExportIndividus.xls
+   just audit-whatsapp # Exécute l'audit WhatsApp global en interrogeant WAHA en direct
    ```
 
 ### Sans Nix
@@ -164,6 +166,17 @@ Les outils se configurent via des variables d'environnement :
 | `SGDF_DATABASE_URL` | Chaîne de connexion SQLite | `sqlite://sgdf.db?mode=rwc` |
 | `SGDF_AUTH_TOKEN` | Jeton secret Bearer pour sécuriser l'API | *(optionnel en dev, requis en prod)* |
 | `SGDF_API_URL` | URL de l'API ciblée par `sgdf-cli` | `http://127.0.0.1:3000` |
+| `WAHA_URL` | URL de la passerelle WAHA (WhatsApp HTTP API) | `https://waha.homelab.vaylet.fr` |
+| `WAHA_API_KEY` | Clé d'API secrète transmise via l'en-tête `X-Api-Key` | *(optionnel en dev, requis pour WAHA)* |
+
+Un fichier local `.env` (ignoré par Git) peut être créé à la racine du dépôt pour définir ces variables sensibles sans risquer de les exposer :
+
+```bash
+# Exemple de fichier .env local
+WAHA_URL="https://waha.homelab.vaylet.fr"
+WAHA_API_KEY="votre_cle_secrete_waha"
+SGDF_API_URL="http://127.0.0.1:3000"
+```
 
 ---
 
@@ -217,6 +230,26 @@ sgdf audit whatsapp-all --groups /tmp/all_groups.json --json
 
 # Cibler une instance distante avec authentification Bearer
 sgdf --api-url https://sgdf.homelab.vaylet.fr --token "VOTRE_TOKEN" status
+```
+
+### Audit automatisé avec WAHA (`audit-whatsapp-waha.sh`)
+
+Le script [`scripts/audit-whatsapp-waha.sh`](scripts/audit-whatsapp-waha.sh) automatise la chaîne complète en interrogeant la passerelle WAHA en direct pour extraire les participants de tous les groupes associés aux unités scoutes :
+
+1. Il récupère en une seule requête la liste des groupes et leurs participants depuis l'API WAHA (`GET /api/default/groups`).
+2. Il transmet cette cartographie en temps réel à `sgdf-tools` (`sgdf audit whatsapp-all`).
+3. L'outil fait correspondre les JIDs aux unités configurées en base et génère la synthèse globale avec les 3 catégories : **manquants**, **intrus connus** (membres ou parents d'autres unités) et **inconnus**.
+
+```bash
+# Lancement via la recette just (recommandé)
+just audit-whatsapp
+
+# Format de sortie brut JSON (pour intégration ou traitement jq)
+just audit-whatsapp --json
+
+# Ou exécution directe du script bash
+./scripts/audit-whatsapp-waha.sh
+./scripts/audit-whatsapp-waha.sh --json
 ```
 
 ---
