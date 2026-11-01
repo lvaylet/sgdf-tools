@@ -42,6 +42,10 @@ Suite d'outils écrite en Rust pour faciliter la gestion administrative et opér
    - Détection des représentants légaux manquants, identification des intrus connus (membres ou parents d'autres unités) et signalement des numéros inconnus.
    - Support d'un audit ciblé par unité ou d'un audit global multi-groupes (`POST /api/v1/audits/whatsapp` et `sgdf audit whatsapp-all`).
 
+5. **Documentation interactive Swagger UI & OpenAPI** :
+   - Interface Swagger UI embarquée accessible sur `/swagger-ui/` avec gestion de l'authentification Bearer Token pour tester interactivement l'API.
+   - Spécification OpenAPI v3 disponible sur `/api-docs/openapi.json` (importable dans n8n, Postman ou Insomnia).
+
 ---
 
 ## 🏛 Architecture
@@ -72,7 +76,7 @@ Le système s'appuie sur une séparation stricte des responsabilités (voir [ADR
              +-----------------+-----------------+
              |                                   |
              v                                   v
-  GET /exports/google-contacts         POST /units/{id}/whatsapp-audit
+  GET /exports/google-contacts         POST /audits/whatsapp (ou /units/{id})
              |                                   |
              +-----------------+-----------------+
                                |
